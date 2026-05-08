@@ -178,16 +178,59 @@ async function translateWithDeepLDocument(srtContent, targetLang, apiKey) {
   return await downloadResponse.text();
 }
 
-async function translateWithGoogleTranslateLocal(texts, targetLanguage) {
+function cleanSubtitleText(text) {
+  let cleaned = String(text || '').trim();
+  cleaned = cleaned.replace(/\{\\[a-zA-Z0-9]+\}/g, '');
+  cleaned = cleaned.replace(/\n/g, " ");
+  return cleaned;
+}
+
+function parseMarkedTranslations(translatedText) {
+  const markerRegex = /(?:@@\s*)?STREMIO[\s_-]*IDX[\s_-]*(\d+)(?:\s*@@)?/gi;
+  const matches = [...translatedText.matchAll(markerRegex)];
+  const translationsByIndex = new Map();
+
+  for (let i = 0; i < matches.length; i++) {
+    const current = matches[i];
+    const next = matches[i + 1];
+    const index = Number(current[1]);
+    const start = current.index + current[0].length;
+    const end = next ? next.index : translatedText.length;
+    const text = translatedText.slice(start, end).trim();
+
+    if (Number.isInteger(index) && text) {
+      translationsByIndex.set(index, text);
+    }
+  }
+
+  return translationsByIndex;
+}
+
+async function translateWithGoogleTranslateLocal(texts, targetLanguage, batchEntries = null) {
   const { translate } = require('free-google-translate-geanpn');
 
-  const cleanedTexts = texts.map(text => {
-    let cleaned = text.trim();
-    cleaned = cleaned.replace(/\{\\[a-zA-Z0-9]+\}/g, '');
-    cleaned = cleaned.replace(/\n/g, " ");
-    return cleaned;
-  });
+  if (Array.isArray(batchEntries) && batchEntries.length === texts.length) {
+    const markedTexts = batchEntries.map((entry, index) => {
+      const marker = `@@STREMIO_IDX_${index}@@`;
+      return `${marker} ${cleanSubtitleText(entry.text)}`;
+    });
 
+    const result = await translate(markedTexts.join('\n'), { to: targetLanguage });
+
+    if (!result.success) {
+      throw new Error(`Translation failed: ${result.error}`);
+    }
+
+    const translationsByIndex = parseMarkedTranslations(result.text);
+
+    if (translationsByIndex.size > 0) {
+      return texts.map((originalText, index) => translationsByIndex.get(index) || originalText);
+    }
+
+    console.warn('[Google Translate] Could not parse indexed markers from local translation result');
+  }
+
+  const cleanedTexts = texts.map(cleanSubtitleText);
   const textToTranslate = cleanedTexts.join(' ||| ');
   const result = await translate(textToTranslate, { to: targetLanguage });
 
@@ -196,18 +239,7 @@ async function translateWithGoogleTranslateLocal(texts, targetLanguage) {
   }
 
   const translatedTexts = result.text.split('|||').map(s => s.trim());
-
-  if (texts.length !== translatedTexts.length && translatedTexts.length > 0) {
-    const diff = texts.length - translatedTexts.length;
-    if (diff > 0) {
-      const splitted = translatedTexts[0].split(" ");
-      if (splitted.length === diff + 1) {
-        return [...splitted, ...translatedTexts.slice(1)];
-      }
-    }
-  }
-
-  return translatedTexts;
+  return texts.map((originalText, index) => translatedTexts[index] || originalText);
 }
 
 async function translateWithCloudflareWorker(texts, targetLanguage, batchEntries = null) {
@@ -324,7 +356,7 @@ async function translateTextWithRetry(
 
           if (useLocalMode) {
             console.log('[Google Translate] Using local mode with google-translate-api-browser');
-            resultArray = await translateWithGoogleTranslateLocal(texts, targetLanguage);
+            resultArray = await translateWithGoogleTranslateLocal(texts, targetLanguage, batchEntries);
           } else {
             console.log('[Google Translate] Using Cloudflare Worker (production mode)');
             resultArray = await translateWithCloudflareWorker(texts, targetLanguage, batchEntries);

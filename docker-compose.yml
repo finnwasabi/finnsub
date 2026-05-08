@@ -1,14 +1,30 @@
-version: '3.8'
-
 services:
   app:
     build: .
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "443:3000"
+    environment:
+      - LOCAL_IP_HTTPS=TRUE
+      - PORT=3000
+      - ADDRESS=0.0.0.0
+      - DB_TYPE=sqlite
+      - SQLITE_PATH=./data/database.db
+      - REDIS_URL=redis://redis:6379
+      - GOOGLE_TRANSLATE_MODE=local
+      - CORS_URL=http://cors-anywhere.herokuapp.com/
+      - PUBLISH_IN_STREMIO_STORE=FALSE
+      - QUEUE_CONCURRENCY=3
+      - BATCH_QUEUE_CONCURRENCY=20
+      - BULL_BOARD_USERNAME=admin
+      - BULL_BOARD_PASSWORD=admin
+      - ENCRYPTION_KEY=G/QZAvGfmtA2p2fTq65whrksMBQbHf2k
+      - HOST_IP=${HOST_IP:-}
     volumes:
       - .:/app
       - /app/node_modules
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - stremio-net
     command: sh -c "rm -f package-lock.json && npm install && mkdir -p data && npm run migrate && node index.js"

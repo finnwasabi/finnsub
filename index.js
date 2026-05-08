@@ -339,26 +339,41 @@ function parseId(id) {
   return { type: "unknown", season: 0, episode: 0 };
 }
 
-// Comment out this line for local execution, uncomment for production deployment
-// Cannot publish to central locally as there is no public IP, so it won't show up in the Stremio store
-
-if (process.env.PUBLISH_IN_STREMIO_STORE == "TRUE") {
-  publishToCentral(`http://${process.env.ADDRESS}/manifest.json`);
-}
-
 const port = process.env.PORT || 3000;
 const address = process.env.ADDRESS || "0.0.0.0";
 const fs = require("fs");
+const https = require("https");
 const express = require("express");
 const cors = require("cors");
 const session = require("express-session");
 const getRouter = require("stremio-addon-sdk/src/getRouter");
 const multer = require("multer");
 const path = require("path");
+const {
+  getLanIp,
+  getAddonUrl,
+  getBaseUrlFromRequest,
+  getPublicBaseUrl,
+  isLocalIpHttpsEnabled,
+} = require("./utils/network");
 
 const { createBullBoard } = require("@bull-board/api");
 const { BullMQAdapter } = require("@bull-board/api/bullMQAdapter");
 const { ExpressAdapter } = require("@bull-board/express");
+
+const localIpHttpsEnabled = isLocalIpHttpsEnabled();
+
+if (localIpHttpsEnabled) {
+  process.env.BASE_URL = getAddonUrl(getLanIp(), 443);
+} else if (!process.env.BASE_URL) {
+  process.env.BASE_URL = `http://${address}:${port}`;
+}
+
+// Comment out this line for local execution, uncomment for production deployment
+// Cannot publish to central locally as there is no public IP, so it won't show up in the Stremio store
+if (process.env.PUBLISH_IN_STREMIO_STORE == "TRUE") {
+  publishToCentral(`${process.env.BASE_URL}/manifest.json`);
+}
 
 const app = express();
 
@@ -368,6 +383,14 @@ app.set('views', './views');
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+app.use((req, _res, next) => {
+  if (localIpHttpsEnabled) {
+    const requestBaseUrl = getPublicBaseUrl(req, process.env.BASE_URL);
+    if (requestBaseUrl) process.env.BASE_URL = requestBaseUrl;
+  }
+  next();
+});
 
 app.use(session({
   secret: process.env.ENCRYPTION_KEY || 'your-secret-key-change-this',
@@ -379,8 +402,14 @@ app.use(session({
   }
 }));
 
-app.use((_, res, next) => {
-  res.setHeader("Cache-Control", "max-age=10, public");
+app.use((req, res, next) => {
+  if (req.path.startsWith("/admin") || req.path.startsWith("/api")) {
+    res.setHeader("Cache-Control", "no-store, private, max-age=0");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+  } else {
+    res.setHeader("Cache-Control", "max-age=10, public");
+  }
   next();
 });
 
@@ -463,6 +492,18 @@ function requireAuth(req, res, next) {
     return res.redirect('/admin/login');
   }
   next();
+}
+
+function completeLogin(req, res, passwordHash) {
+  req.session.userPasswordHash = passwordHash;
+  req.session.save((error) => {
+    if (error) {
+      console.error('Session save error:', error);
+      return res.status(500).json({ error: 'Failed to save login session' });
+    }
+
+    return res.json({ success: true, redirect: '/admin/dashboard' });
+  });
 }
 
 app.get("/", (_, res) => {
@@ -550,8 +591,7 @@ app.post("/admin/auth", async (req, res) => {
       );
 
       if (userResults[0].count > 0) {
-        req.session.userPasswordHash = passwordHash;
-        return res.json({ success: true, redirect: '/admin/dashboard' });
+        return completeLogin(req, res, passwordHash);
       }
 
       return res.status(401).json({ error: 'Invalid credentials' });
@@ -564,8 +604,7 @@ app.post("/admin/auth", async (req, res) => {
       );
 
       if (queueResults[0].count > 0) {
-        req.session.userPasswordHash = passwordHash;
-        return res.json({ success: true, redirect: '/admin/dashboard' });
+        return completeLogin(req, res, passwordHash);
       }
 
       return res.status(401).json({ error: 'Invalid password' });
@@ -953,7 +992,7 @@ app.post("/admin/delete", requireAuth, async (req, res) => {
   }
 });
 
-app.get("/configure", (_req, res) => {
+app.get("/configure", (req, res) => {
   fs.readFile("./configure.html", "utf8", (err, data) => {
     if (err) {
       res.status(500).send("Error loading configuration page");
@@ -964,7 +1003,7 @@ app.get("/configure", (_req, res) => {
       .replace("<%= languages %>", JSON.stringify(baseLanguages))
       .replace(
         "<%= baseUrl %>",
-        process.env.BASE_URL || `http://${address}:${port}`
+        localIpHttpsEnabled ? getPublicBaseUrl(req, process.env.BASE_URL) : process.env.BASE_URL
       );
 
     res.setHeader("Content-Type", "text/html");
@@ -1298,12 +1337,28 @@ app.use("/public", express.static("public"));
 
 app.use(getRouter(builder.getInterface()));
 
-const server = app.listen(port, address, () => {
-  console.log(`Server started: http://${address}:${port}`);
-  console.log("Manifest available:", `http://${address}:${port}/manifest.json`);
-  console.log("Configuration:", `http://${address}:${port}/configure`);
-  console.log("Bull Board Dashboard:", `http://${address}:${port}/admin/queues`);
-});
+let server;
+
+if (localIpHttpsEnabled) {
+  const certPath = path.join(__dirname, "certs", "local-ip.pem");
+  const keyPath = path.join(__dirname, "certs", "local-ip.key");
+  const cert = fs.readFileSync(certPath);
+  const key = fs.readFileSync(keyPath);
+
+  server = https.createServer({ cert, key }, app).listen(port, address, () => {
+    console.log(`Server started: https://${address}:${port}`);
+    console.log("Manifest available:", `${process.env.BASE_URL}/manifest.json`);
+    console.log("Configuration:", `${process.env.BASE_URL}/configure`);
+    console.log("Bull Board Dashboard:", `${process.env.BASE_URL}/admin/queues`);
+  });
+} else {
+  server = app.listen(port, address, () => {
+    console.log(`Server started: http://${address}:${port}`);
+    console.log("Manifest available:", `${process.env.BASE_URL}/manifest.json`);
+    console.log("Configuration:", `${process.env.BASE_URL}/configure`);
+    console.log("Bull Board Dashboard:", `${process.env.BASE_URL}/admin/queues`);
+  });
+}
 
 server.on("error", (error) => {
   console.error("Server startup error:", error);

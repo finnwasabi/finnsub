@@ -207,7 +207,7 @@
         lucide.createIcons();
 
         const languages = <%= languages %>;
-        const baseUrl = '<%= baseUrl %>';
+        const baseUrl = '<%= baseUrl %>'.replace(/\/$/, '');
 
         const languageSelect = document.getElementById('translateto');
         languages.forEach(lang => {
@@ -342,7 +342,7 @@
                 if (value) config[key] = value;
             }
 
-            const host = baseUrl.replace(/^https?:\/\//, '');
+            const host = baseUrl.replace(/^https?:\/\//, '').replace(/:443$/, '');
             const installUrl = `stremio://${host}/${encodeURIComponent(JSON.stringify(config))}/manifest.json`;
             window.location.href = installUrl;
             showToast('Opening Stremio...', 'success');

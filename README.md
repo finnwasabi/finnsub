@@ -79,7 +79,31 @@ nano .env
 docker-compose up -d
 ```
 
-Access the addon at `http://localhost:3000`
+Access the addon with local HTTPS:
+
+```txt
+https://<your-ip-with-dashes>.local-ip.medicmobile.org/configure
+```
+
+Example: if your LAN IP is `192.168.1.100`, open:
+
+```txt
+https://192-168-1-100.local-ip.medicmobile.org/configure
+```
+
+To find your correct LAN IP:
+
+- **Windows**: run `ipconfig` and use the `IPv4 Address` from your active `Ethernet` or `Wi-Fi` adapter.
+- **Mac**: run `ipconfig getifaddr en0` for Wi-Fi, or `ipconfig getifaddr en1` if needed.
+- **Linux**: run `hostname -I` and use the address from your LAN interface.
+
+On Windows, ignore virtual adapter IPs such as `vEthernet`, `WSL`, `Docker`, `Hyper-V`, or addresses like `192.168.65.x`. Use the IP from the real network adapter, for example `Ethernet` or `Wi-Fi`.
+
+If Docker detects the wrong IP, set `HOST_IP` in `.env` before starting:
+
+```txt
+HOST_IP=192.168.1.100
+```
 
 **What's included:**
 - Web server (Node.js)
