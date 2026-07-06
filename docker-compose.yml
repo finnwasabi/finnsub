@@ -27,7 +27,7 @@ services:
       - "host.docker.internal:host-gateway"
     networks:
       - stremio-net
-    command: sh -c "rm -f package-lock.json && npm install && mkdir -p data && npm run migrate && node index.js"
+    command: sh -c "rm -f package-lock.json && npm install && node scripts/update-local-ip-certs.js && mkdir -p data && npm run migrate && node index.js"
     depends_on:
       redis:
         condition: service_healthy
