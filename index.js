@@ -10,6 +10,7 @@ const translationQueue = require("./queues/translationQueue");
 const baseLanguages = require("./langs/base.lang.json");
 const isoCodeMapping = require("./langs/iso_code_mapping.json");
 require("dotenv").config();
+const fsp = require("fs").promises;
 
 function generateSubtitleUrl(
   targetLanguage,
@@ -31,6 +32,28 @@ function toIso639_2(twoLetter) {
   return (
     Object.keys(isoCodeMap).find((k) => isoCodeMap[k] === twoLetter) || twoLetter
   );
+}
+
+
+// Ban ghi trong co so du lieu chi dang tin khi file that su nam tren dia va khong phai
+// ban giu cho. Truoc day addon ghi ban ghi ngay luc xep hang dich, nen mot luot dich
+// hong la de lai ban ghi vinh vien: lan sau no thay "da co" roi tra thang file giu cho
+// 91 byte ra ma khong goi API lan nao.
+const PLACEHOLDER_MARKS = [
+  "Translating subtitles",
+  "No subtitles found on OpenSubtitles",
+];
+
+async function isUsableSubtitle(relativePath) {
+  if (!relativePath) return false;
+  if (relativePath.startsWith("http")) return true; // ban nguoi dich san tren OpenSubtitles
+  try {
+    const content = await fsp.readFile(relativePath, "utf-8");
+    if (!content.trim()) return false;
+    return !PLACEHOLDER_MARKS.some((mark) => content.includes(mark));
+  } catch (err) {
+    return false; // ban ghi con nhung file da bi xoa
+  }
 }
 
 const builder = new addonBuilder({
@@ -115,6 +138,18 @@ builder.defineSubtitlesHandler(async function (args) {
       episode,
       targetLanguage
     );
+
+    if (
+      existingSubtitle.length > 0 &&
+      !(await isUsableSubtitle(existingSubtitle[0]))
+    ) {
+      console.log(
+        "Stale subtitle record, dropping it and translating again:",
+        existingSubtitle[0]
+      );
+      await connection.deletesubtitle(imdbid, season, episode, targetLanguage);
+      existingSubtitle.length = 0;
+    }
 
     if (existingSubtitle.length > 0) {
       console.log(
@@ -241,21 +276,6 @@ builder.defineSubtitlesHandler(async function (args) {
         episode,
         config.provider
       )
-    );
-
-    await connection.addsubtitle(
-      imdbid,
-      type,
-      season,
-      episode,
-      generateSubtitleUrl(
-        targetLanguage,
-        imdbid,
-        season,
-        episode,
-        config.provider
-      ).replace(`${process.env.BASE_URL}/`, ""),
-      targetLanguage
     );
 
     return Promise.resolve({

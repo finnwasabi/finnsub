@@ -241,6 +241,17 @@ class SQLiteAdapter extends BaseAdapter {
     }
   }
 
+  async deletesubtitle(imdbid, season = null, episode = null, langcode) {
+    try {
+      await this.query(
+        "DELETE FROM subtitle WHERE series_imdbid = ? AND subtitle_seasonno = ? AND subtitle_episodeno = ? AND subtitle_langcode = ?",
+        [imdbid, season, episode, langcode]
+      );
+    } catch (error) {
+      console.error("Subtitle delete error:", error);
+    }
+  }
+
   async getsubtitles(imdbid, season = null, episode = null, langcode) {
     try {
       let rows;

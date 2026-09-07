@@ -31,6 +31,12 @@ const translationQueue = new Queue(
         model_name
       );
 
+      // startTranslation tra ve false khi that bai. Truoc day chuyen no vao cb(null, ...)
+      // nen hang doi luon tuong la xong, va co che thu lai cua no chua bao gio chay.
+      if (!result) {
+        return cb(new Error("Translation failed"));
+      }
+
       cb(null, result);
     } catch (error) {
       console.error("Queue error:", error);
@@ -39,8 +45,10 @@ const translationQueue = new Queue(
   },
   {
     concurrent: 1, // Reduce to 1 process initially
-    maxRetries: 3,
-    retryDelay: 3000,
+    // Khong thu lai mu quang: phan lon that bai la het han muc theo NGAY cua nha cung
+    // cap, thu lai sau 3 giay chi dot them han muc. Dot 3 se phan loai loi roi thu lai
+    // dung cho dang dang.
+    maxRetries: 0,
   }
 );
 

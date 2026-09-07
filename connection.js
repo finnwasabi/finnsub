@@ -60,6 +60,11 @@ async function addsubtitle(imdbid, type, season = null, episode = null, path, la
     return adapter.addsubtitle(imdbid, type, season, episode, path, langcode);
 }
 
+async function deletesubtitle(imdbid, season = null, episode = null, langcode) {
+    const adapter = await getAdapter();
+    return adapter.deletesubtitle(imdbid, season, episode, langcode);
+}
+
 async function getsubtitles(imdbid, season = null, episode = null, langcode) {
     const adapter = await getAdapter();
     return adapter.getsubtitles(imdbid, season, episode, langcode);
@@ -88,6 +93,7 @@ module.exports = {
     checkseries,
     addseries,
     addsubtitle,
+    deletesubtitle,
     getsubtitles,
     checkForTranslation,
     checksubtitle,

@@ -67,6 +67,10 @@ class BaseAdapter {
     throw new Error("addsubtitle() must be implemented by child class");
   }
 
+  async deletesubtitle(imdbid, season = null, episode = null, langcode) {
+    throw new Error("deletesubtitle() must be implemented by child class");
+  }
+
   async getsubtitles(imdbid, season = null, episode = null, langcode) {
     throw new Error("getsubtitles() must be implemented by child class");
   }

@@ -225,6 +225,27 @@ class SubtitleProcessor {
         await connection.addseries(imdbid, type);
       }
 
+      // Ban ghi chi duoc tao o day, sau khi file dich that su nam tren dia. Truoc day
+      // index.js tao no ngay luc xep hang, nen dich hong la ban ghi ket lai vinh vien.
+      if (
+        !(await connection.checksubtitle(
+          imdbid,
+          season,
+          episode,
+          newSubtitleFilePath,
+          oldisocode
+        ))
+      ) {
+        await connection.addsubtitle(
+          imdbid,
+          type,
+          season,
+          episode,
+          newSubtitleFilePath,
+          oldisocode
+        );
+      }
+
       console.log(
         `Subtitle translation and saving completed: ${newSubtitleFilePath}`
       );
