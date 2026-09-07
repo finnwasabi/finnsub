@@ -355,7 +355,7 @@ app.get("/", (_, res) => {
   res.redirect("/configure");
 });
 
-app.get("/configure", (_req, res) => {
+function sendConfigurePage(res, savedConfig) {
   fs.readFile("./configure.html", "utf8", (err, data) => {
     if (err) {
       res.status(500).send("Error loading configuration page");
@@ -364,6 +364,7 @@ app.get("/configure", (_req, res) => {
 
     const html = data
       .replace("<%= languages %>", JSON.stringify(baseLanguages))
+      .replace("<%= savedConfig %>", JSON.stringify(savedConfig || null))
       .replace(
         "<%= baseUrl %>",
         process.env.BASE_URL || `http://${address}:${port}`
@@ -372,6 +373,36 @@ app.get("/configure", (_req, res) => {
     res.setHeader("Content-Type", "text/html");
     res.send(html);
   });
+}
+
+app.get("/configure", (_req, res) => sendConfigurePage(res, null));
+
+// Cai nut banh rang trong Stremio va Nuvio tro toi /<cau hinh>/configure. Truoc day
+// duong dan do tra ve 404 nen addon khong mo lai duoc cau hinh cu, phai go di cai lai.
+// Doc luon cau hinh dang dung de dien san vao form.
+app.get("/:config/configure", (req, res) => {
+  let saved = null;
+  try {
+    saved = JSON.parse(req.params.config);
+  } catch (error) {
+    saved = null;
+  }
+  sendConfigurePage(res, saved);
+});
+
+// Ban manifest do SDK sinh ra khi da co cau hinh bi rong mat behaviorHints, nen client
+// tuong addon nay khong chinh duoc va giau nut banh rang di. Tra manifest o day, truoc
+// router cua SDK, va giu nguyen co configurable.
+app.get(["/manifest.json", "/:config/manifest.json"], (req, res) => {
+  const manifest = { ...builder.getInterface().manifest };
+  manifest.configurable = true;
+  manifest.behaviorHints = {
+    ...(manifest.behaviorHints || {}),
+    configurable: true,
+    configurationRequired: !req.params.config,
+  };
+  res.setHeader("Content-Type", "application/json");
+  res.send(JSON.stringify(manifest));
 });
 
 // Danh sach model viet cung trong trang cau hinh luon lac hau: nha cung cap khai tu

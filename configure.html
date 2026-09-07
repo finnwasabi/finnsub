@@ -301,6 +301,7 @@
 <script>
   const languages = <%= languages %>;
   const baseUrl = '<%= baseUrl %>';
+  const savedConfig = <%= savedConfig %>;
 
   /* Danh sach model o day chi la loi tat cho lan dau. Nut "Load from provider" hoi thang
      nha cung cap bang chinh khoa cua nguoi dung, nen khong bao gio phai sua tay lai. */
@@ -518,7 +519,41 @@
     localStorage.setItem('theme', next);
   });
 
+  /* Khi mo tu nut banh rang, duong dan mang theo cau hinh dang dung. Dien lai vao form
+     de sua mot o roi cai de len, thay vi go het rop tu dau. */
+  function applySavedConfig() {
+    if (!savedConfig) return;
+
+    if (providerConfig[savedConfig.provider]) providerSelect.value = savedConfig.provider;
+    if (savedConfig.translateto) languageSelect.value = savedConfig.translateto;
+    updateProviderFields();
+
+    if (savedConfig.apikey) el('apikey').value = savedConfig.apikey;
+    if (savedConfig.base_url) el('base_url').value = savedConfig.base_url;
+
+    const model = savedConfig.model_name || '';
+    if (!model) return;
+
+    const config = currentProvider();
+    if (config.custom) {
+      el('model_name').value = model;
+      return;
+    }
+
+    const known = Array.from(modelSelect.options).some((option) => option.value === model);
+    if (known) {
+      modelSelect.value = model;
+    } else {
+      // Model dang dung khong co trong danh sach dung san, hoac la mot danh sach nhieu
+      // model ngan cach bang dau phay. Hien no o o tu nhap chu dung im lang bo mat.
+      modelSelect.value = OTHER;
+      modelNameGroup.classList.remove('hidden');
+      el('model_name').value = model;
+    }
+  }
+
   updateProviderFields();
+  applySavedConfig();
   providerSelect.addEventListener('change', updateProviderFields);
 </script>
 </body>
