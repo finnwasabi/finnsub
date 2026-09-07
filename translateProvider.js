@@ -119,6 +119,9 @@ async function callOpenAiCompatible(texts, targetLanguage, apikey, base_url, mod
   });
 
   const translatedJson = parseJsonLoose(completion.choices[0].message.content);
+  // Mot dong cho moi luot goi thanh cong, co ten model. Dem dong nay trong log la biet
+  // chinh xac han muc ngay cua tung model, thay vi phai tin vao tai lieu cua nha cung cap.
+  console.log(`Translated ${texts.length} lines with ${model}`);
   return (translatedJson.texts || [])
     .slice()
     .sort((a, b) => a.index - b.index)
