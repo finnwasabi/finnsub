@@ -86,18 +86,15 @@ async function translateTextWithRetry(
         texts.length,
         resultArray.length
       );
-      await fs.writeFile(
-        `debug/errorTranslate${count}.json`,
-        JSON.stringify(
-          {
-            attempt,
-            texts,
-            translatedText: resultArray,
-          },
-          null,
-          2
-        )
-      );
+      // Chi ghi khi bat DEBUG_TRANSLATE. Ten file lay theo dau thoi gian chu khong
+      // theo bien dem, vi bien dem reset moi lan khoi dong lai va ghi de len nhau.
+      if (process.env.DEBUG_TRANSLATE === "true") {
+        await fs.mkdir("debug", { recursive: true });
+        await fs.writeFile(
+          `debug/errorTranslate-${Date.now()}-${attempt}.json`,
+          JSON.stringify({ attempt, texts, translatedText: resultArray }, null, 2)
+        );
+      }
 
       if (attempt >= maxRetries) {
         throw new Error(

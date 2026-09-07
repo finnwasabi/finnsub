@@ -96,8 +96,22 @@ const builder = new addonBuilder({
   resources: ["subtitles"],
 });
 
+
+// Cau hinh cua Stremio di trong chinh duong dan URL, nen no chua ca khoa API. In tho
+// ra log la khoa nam trong log container, journald va log truy cap cua reverse proxy.
+function safeConfig(config = {}) {
+  const masked = { ...config };
+  if (masked.apikey) {
+    masked.apikey = `***${String(masked.apikey).slice(-4)}`;
+  }
+  return masked;
+}
+
 builder.defineSubtitlesHandler(async function (args) {
-  console.log("Subtitle request received:", args);
+  console.log("Subtitle request received:", {
+    id: args.id,
+    config: safeConfig(args.config),
+  });
   const { id, config, stream } = args;
 
   const targetLanguage = languages.getKeyFromValue(

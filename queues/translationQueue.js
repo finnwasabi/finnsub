@@ -16,7 +16,11 @@ const translationQueue = new Queue(
         model_name,
       } = job;
 
-      console.log("Processing subtitles:", subs);
+      // Chi in dia chi phu de, khong in ca goi cong viec vi trong do co khoa API.
+      console.log(
+        "Processing subtitles:",
+        subs.map((sub) => sub.url)
+      );
 
       // Keep as is
       const result = await processfiles.startTranslation(
