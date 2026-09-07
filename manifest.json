@@ -2,7 +2,7 @@
   "id": "org.autotranslate.geanpn",
   "version": "1.0.2",
   "name": "Auto Subtitle Translate by geanpn",
-  "logo": "./subtitles/logo.webp",
+  "logo": "/assets/logo.png",
   "configurable": true,
   "behaviorHints": {
     "configurable": true,

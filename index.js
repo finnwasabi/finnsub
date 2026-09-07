@@ -22,11 +22,22 @@ function generateSubtitleUrl(
   return `${baseUrl}/subtitles/${provider}/${targetLanguage}/${imdbid}/season${season}/${imdbid}-translated-${episode}-1.srt`;
 }
 
+// Nuvio va Stremio doc ma ngon ngu theo ISO 639-2 (ba chu). Ban goc tra ve
+// "vi-translated", khong khop bang ma nao nen may phat hien "Khong xac dinh".
+// Bang langs/iso_code_mapping.json cua chinh addon anh xa ba chu sang hai chu,
+// nen tra nguoc lai la ra ma dung cho moi ngon ngu chu khong rieng tieng Viet.
+const isoCodeMap = require("./langs/iso_code_mapping.json");
+function toIso639_2(twoLetter) {
+  return (
+    Object.keys(isoCodeMap).find((k) => isoCodeMap[k] === twoLetter) || twoLetter
+  );
+}
+
 const builder = new addonBuilder({
   id: "org.autotranslate.geanpn",
   version: "1.0.2",
   name: "Auto Subtitle Translate by geanpn",
-  logo: "./subtitles/logo.webp",
+  logo: `${process.env.BASE_URL || ""}/assets/logo.png`,
   behaviorHints: {
     configurable: true,
     configurationRequired: true,
@@ -127,7 +138,7 @@ builder.defineSubtitlesHandler(async function (args) {
               episode,
               config.provider
             ),
-            lang: `${targetLanguage}-translated`,
+            lang: toIso639_2(targetLanguage),
           },
         ],
       });
@@ -162,7 +173,7 @@ builder.defineSubtitlesHandler(async function (args) {
               episode,
               config.provider
             ),
-            lang: `${targetLanguage}-translated`,
+            lang: toIso639_2(targetLanguage),
           },
         ],
       });
@@ -258,7 +269,7 @@ builder.defineSubtitlesHandler(async function (args) {
             episode,
             config.provider
           ),
-          lang: `${targetLanguage}-translated`,
+          lang: toIso639_2(targetLanguage),
         },
       ],
     });
@@ -344,6 +355,7 @@ app.get("/configure", (_req, res) => {
 });
 
 app.use("/subtitles", express.static("subtitles"));
+app.use("/assets", express.static("assets"));
 
 app.use(getRouter(builder.getInterface()));
 
