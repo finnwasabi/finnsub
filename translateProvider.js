@@ -180,6 +180,7 @@ async function translateTextWithRetry(
       case "Google Gemini":
       case "OpenRouter":
       case "Groq":
+      case "Cerebras":
       case "Together AI":
       case "Custom":
       case "ChatGPT API": {
