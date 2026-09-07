@@ -287,8 +287,8 @@
       </div>
 
       <div class="actions">
-        <button type="submit" class="btn">Install in Stremio</button>
-        <button type="button" class="btn secondary" id="copyLink">Copy link for Nuvio</button>
+        <button type="submit" class="btn">Install</button>
+        <button type="button" class="btn secondary" id="copyLink">Copy link</button>
       </div>
 
       <p class="note">
@@ -505,7 +505,7 @@
       window.prompt('Copy this link', url);
       return;
     }
-    setTimeout(() => { button.textContent = 'Copy link for Nuvio'; }, 1800);
+    setTimeout(() => { button.textContent = 'Copy link'; }, 1800);
   });
 
   const root = document.documentElement;
