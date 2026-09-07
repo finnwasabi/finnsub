@@ -452,6 +452,15 @@ app.use("/assets", express.static("assets"));
 
 app.use(getRouter(builder.getInterface()));
 
+// Hang doi nam trong bo nho, nen sau khi khoi dong lai thi moi dong con sot trong bang
+// translation_queue deu la rac cua luot bi giet giua chung: container dung lai giua chung
+// thi khoi finally khong bao gio chay. De nguyen thi widget dem nham la "dang cho dich".
+connection
+  .getAdapter()
+  .then((adapter) => adapter.query("DELETE FROM translation_queue"))
+  .then(() => console.log("Cleared stale translation queue rows"))
+  .catch((error) => console.error("Could not clear translation queue:", error.message));
+
 const server = app.listen(port, address, () => {
   console.log(`Server started: http://${address}:${port}`);
   console.log("Manifest available:", `http://${address}:${port}/manifest.json`);
