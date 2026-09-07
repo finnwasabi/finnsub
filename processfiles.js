@@ -7,6 +7,32 @@ const fs = require("fs").promises;
 const { translateText, QuotaError } = require("./translateProvider");
 const { createOrUpdateMessageSub } = require("./subtitles");
 
+/**
+ * Doc file .srt thanh tung khoi. Ban cu doc theo trang thai tung dong va day cau thoai
+ * cuoi vao lo o moi dong trong, roi day them mot lan nua o cuoi file, nen tuy file co
+ * xuong dong cuoi hay khong ma thua hoac thieu mot cau. Luc ghi ra thi no duyet theo so
+ * khoi goc, nen lech mot cai la toan bo phan sau lech thoai ma khong bao loi gi.
+ */
+function parseSrt(content) {
+  const normalized = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const blocks = [];
+
+  for (const raw of normalized.split(/\n{2,}/)) {
+    const lines = raw.split("\n").filter((line) => line.trim() !== "");
+    const timecodeAt = lines.findIndex((line) => line.includes("-->"));
+    if (timecodeAt === -1 || timecodeAt === lines.length - 1) continue;
+
+    blocks.push({
+      counter:
+        timecodeAt > 0 ? lines[timecodeAt - 1].trim() : String(blocks.length + 1),
+      timecode: lines[timecodeAt].trim(),
+      text: lines.slice(timecodeAt + 1).join("\n"),
+    });
+  }
+
+  return blocks;
+}
+
 class SubtitleProcessor {
   constructor() {
     this.subcounts = [];
@@ -34,104 +60,40 @@ class SubtitleProcessor {
         originalSubtitleFilePath,
         { encoding: "utf-8" }
       );
-      const lines = originalSubtitleContent.split("\n");
 
-      // SUA TAI CHO: goc la 60. Han muc mien phi cua Gemini la 20 request moi phut, ma mot tap
-      // 600 dong voi batch 60 la hon 10 luot goi lien tiep, cong retry cua thu vien OpenAI
-      // la vuot tran. Batch 200 giam so luot goi xuong con mot phan ba.
-      const batchSize = provider === "ChatGPT API" ? 50 : 200;
-      let subtitleBatch = [];
-      let currentBlock = {
-        iscount: true,
-        istimecode: false,
-        istext: false,
-        textcount: 0,
-      };
-
-      // Process subtitle file line by line
-      for (const line of lines) {
-        if (line.trim() === "") {
-          currentBlock = {
-            iscount: true,
-            istimecode: false,
-            istext: false,
-            textcount: 0,
-          };
-
-          if (this.texts.length > 0) {
-            subtitleBatch.push(this.texts[this.texts.length - 1]);
-          }
-
-          // Translate when batch size is reached
-          if (subtitleBatch.length === batchSize) {
-            try {
-              await this.translateBatch(
-                subtitleBatch,
-                oldisocode,
-                provider,
-                apikey,
-                base_url,
-                model_name
-              );
-              subtitleBatch = [];
-              // SUA TAI CHO: nghi 4 giay giua cac batch. Khong co dong nay thi cac luot goi
-              // di lien nhau va dinh 429, luc do addon bo do ban dich giua chung.
-              await new Promise((r) => setTimeout(r, 4000));
-            } catch (error) {
-              console.error("Batch translation error: ", error);
-              throw error;
-            }
-          }
-          continue;
-        }
-
-        if (currentBlock.iscount) {
-          this.subcounts.push(line);
-          currentBlock = {
-            iscount: false,
-            istimecode: true,
-            istext: false,
-            textcount: 0,
-          };
-          continue;
-        }
-
-        if (currentBlock.istimecode) {
-          this.timecodes.push(line);
-          currentBlock = {
-            iscount: false,
-            istimecode: false,
-            istext: true,
-            textcount: 0,
-          };
-          continue;
-        }
-
-        if (currentBlock.istext) {
-          if (currentBlock.textcount === 0) {
-            this.texts.push(line);
-          } else {
-            this.texts[this.texts.length - 1] += "\n" + line;
-          }
-          currentBlock.textcount++;
-        }
+      const blocks = parseSrt(originalSubtitleContent);
+      if (blocks.length === 0) {
+        throw new Error("Subtitle file has no readable blocks");
       }
 
-      // Process remaining batch
-      if (subtitleBatch.length > 0) {
-        try {
-          subtitleBatch.push(this.texts[this.texts.length - 1]);
-          await this.translateBatch(
-            subtitleBatch,
-            oldisocode,
-            provider,
-            apikey,
-            base_url,
-            model_name
-          );
-        } catch (error) {
-          console.log("Subtitle batch error: ", error);
-          throw error;
+      this.subcounts = blocks.map((block) => block.counter);
+      this.timecodes = blocks.map((block) => block.timecode);
+      this.texts = blocks.map((block) => block.text);
+
+      // Kich thuoc lo doi duoc bang bien moi truong. Nha cung cap tinh han muc theo so
+      // luot goi moi ngay chu khong theo so chu, nen lo cang lon cang do ton han muc,
+      // doi lai lo lon thi model nho de tra ve JSON vo hoac thieu dong.
+      const batchSize = Number(
+        process.env.TRANSLATE_BATCH_SIZE ||
+          (provider === "ChatGPT API" ? 50 : 200)
+      );
+      const batchPause = Number(process.env.TRANSLATE_BATCH_PAUSE_MS || 4000);
+
+      for (let start = 0; start < this.texts.length; start += batchSize) {
+        const batch = this.texts.slice(start, start + batchSize);
+        await this.translateBatch(
+          batch,
+          oldisocode,
+          provider,
+          apikey,
+          base_url,
+          model_name
+        );
+
+        if (start + batchSize < this.texts.length && batchPause > 0) {
+          // Nghi giua cac lo: goi lien tiep khong nghi thi nha cung cap tu choi bang 429
+          // ngay ca khi chua cham tran ngay.
+          await new Promise((resolve) => setTimeout(resolve, batchPause));
         }
       }
 
@@ -247,12 +209,13 @@ class SubtitleProcessor {
       // Build subtitle content
       const output = [];
       for (let i = 0; i < this.subcounts.length; i++) {
-        output.push(
-          this.subcounts[i],
-          this.timecodes[i],
-          this.translatedSubtitle[i],
-          ""
-        );
+        // Neu vi ly do nao do thieu ban dich cho mot khoi thi giu nguyen cau goc, chu
+        // khong de "undefined" roi vao file phu de.
+        const line =
+          this.translatedSubtitle[i] !== undefined
+            ? this.translatedSubtitle[i]
+            : this.texts[i];
+        output.push(this.subcounts[i], this.timecodes[i], line, "");
       }
 
       if (
@@ -375,6 +338,17 @@ async function startTranslation(
       } catch (unlinkError) {
         console.error(`Error cleaning up file ${fp}:`, unlinkError);
       }
+      // Ban tieng Anh duoc tai ve mot cay thu muc tam rieng. Xoa file xong ma khong don
+      // thu muc thi con lai mot cay rong lon dan theo tung bo phim.
+      let dir = fp.slice(0, fp.lastIndexOf("/"));
+      while (dir && dir !== "subtitles") {
+        try {
+          await fs.rmdir(dir);
+        } catch (rmError) {
+          break; // con file khac trong do, dung lai
+        }
+        dir = dir.slice(0, dir.lastIndexOf("/"));
+      }
     }
     // Cleanup: Delete entry from translation queue in DB
     try {
@@ -391,4 +365,4 @@ async function startTranslation(
   }
 }
 
-module.exports = { startTranslation };
+module.exports = { startTranslation, parseSrt };
