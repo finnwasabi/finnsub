@@ -35,7 +35,10 @@ class SubtitleProcessor {
       );
       const lines = originalSubtitleContent.split("\n");
 
-      const batchSize = provider === "ChatGPT API" ? 50 : 60;
+      // SUA TAI CHO: goc la 60. Han muc mien phi cua Gemini la 20 request moi phut, ma mot tap
+      // 600 dong voi batch 60 la hon 10 luot goi lien tiep, cong retry cua thu vien OpenAI
+      // la vuot tran. Batch 200 giam so luot goi xuong con mot phan ba.
+      const batchSize = provider === "ChatGPT API" ? 50 : 200;
       let subtitleBatch = [];
       let currentBlock = {
         iscount: true,
@@ -70,6 +73,9 @@ class SubtitleProcessor {
                 model_name
               );
               subtitleBatch = [];
+              // SUA TAI CHO: nghi 4 giay giua cac batch. Khong co dong nay thi cac luot goi
+              // di lien nhau va dinh 429, luc do addon bo do ban dich giua chung.
+              await new Promise((r) => setTimeout(r, 4000));
             } catch (error) {
               console.error("Batch translation error: ", error);
               throw error;
