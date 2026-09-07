@@ -4,7 +4,7 @@
 const opensubtitles = require("./opensubtitles");
 const connection = require("./connection");
 const fs = require("fs").promises;
-const { translateText } = require("./translateProvider");
+const { translateText, QuotaError } = require("./translateProvider");
 const { createOrUpdateMessageSub } = require("./subtitles");
 
 class SubtitleProcessor {
@@ -14,6 +14,7 @@ class SubtitleProcessor {
     this.texts = [];
     this.translatedSubtitle = [];
     this.count = 0;
+    this.untranslatedCount = 0;
   }
 
   async processSubtitles(
@@ -176,10 +177,46 @@ class SubtitleProcessor {
         this.translatedSubtitle.push(translatedText);
       });
 
-      console.log("Batch translation completed");
+      console.log(`Batch translation completed (${subtitleBatch.length} lines)`);
     } catch (error) {
-      console.error("Batch translation error:", error);
-      throw error;
+      // Het han muc thi cat nho ra cung vo ich, chi ton them luot goi. Bo cuoc luon,
+      // de lan sau dich lai tu dau con hon luu mot ban dich do dang.
+      if (error instanceof QuotaError) {
+        throw error;
+      }
+
+      // Con lai deu la loi cua mot lo cu the: model tra ve JSON vo, hoac so dong tra ve
+      // khong khop. Chia doi lo roi thu lai thay vi bo ca tap: mot cau thoai kho nuot
+      // khong duoc keo theo 599 cau con lai.
+      if (subtitleBatch.length > 1) {
+        const middle = Math.ceil(subtitleBatch.length / 2);
+        console.log(
+          `Batch of ${subtitleBatch.length} failed (${error.message}), splitting in two`
+        );
+        await this.translateBatch(
+          subtitleBatch.slice(0, middle),
+          oldisocode,
+          provider,
+          apikey,
+          base_url,
+          model_name
+        );
+        await this.translateBatch(
+          subtitleBatch.slice(middle),
+          oldisocode,
+          provider,
+          apikey,
+          base_url,
+          model_name
+        );
+        return;
+      }
+
+      // Mot dong don ma van hong: giu nguyen ban goc. Nguoi xem doc mot cau tieng Anh
+      // giua chung con hon toan bo phan sau bi lech moc thoi gian.
+      console.error("Line kept untranslated:", error.message);
+      this.translatedSubtitle.push(subtitleBatch[0]);
+      this.untranslatedCount++;
     }
   }
 
@@ -215,6 +252,21 @@ class SubtitleProcessor {
           this.timecodes[i],
           this.translatedSubtitle[i],
           ""
+        );
+      }
+
+      if (
+        this.untranslatedCount > 0 &&
+        this.untranslatedCount === this.translatedSubtitle.length
+      ) {
+        throw new Error(
+          "Nothing could be translated, refusing to save a copy of the original"
+        );
+      }
+
+      if (this.untranslatedCount > 0) {
+        console.log(
+          `${this.untranslatedCount} of ${this.translatedSubtitle.length} lines kept in the original language`
         );
       }
 
