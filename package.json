@@ -1,7 +1,7 @@
 {
-  "name": "stremio-translate-subtitle-by-geanpn",
+  "name": "finnsub",
   "version": "1.0.0",
-  "description": "Stremio Addon to translate subtitles using Google Translate or ChatGPT",
+  "description": "Stremio addon that translates OpenSubtitles subtitles with any OpenAI compatible model. Fork of stremio-translate-subtitle-by-geanpn.",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
@@ -16,7 +16,7 @@
     "google",
     "chatgpt"
   ],
-  "author": "Geanpn",
+  "author": "Geanpn (original), finnwasabi (this fork)",
   "license": "MIT",
   "dependencies": {
     "axios": "^1.6.1",
@@ -28,5 +28,9 @@
     "sqlite3": "^5.1.6",
     "stremio-addon-sdk": "^1.6.10",
     "util": "^0.12.5"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/finnwasabi/finnsub"
   }
 }

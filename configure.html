@@ -1,309 +1,538 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Auto Subtitle Translate - Configuration</title>
-    <style>
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: #f5f5f5;
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-        }
-        .container {
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            max-width: 500px;
-            width: 100%;
-            padding: 40px;
-        }
-        h1 {
-            color: #1a1a1a;
-            margin-bottom: 8px;
-            font-size: 24px;
-            font-weight: 600;
-        }
-        .subtitle {
-            color: #666;
-            margin-bottom: 30px;
-            font-size: 14px;
-        }
-        .form-group {
-            margin-bottom: 20px;
-        }
-        label {
-            display: block;
-            margin-bottom: 8px;
-            color: #333;
-            font-weight: 500;
-            font-size: 14px;
-        }
-        select, input[type="text"] {
-            width: 100%;
-            padding: 10px 12px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 14px;
-            transition: border-color 0.2s;
-        }
-        select:focus, input[type="text"]:focus {
-            outline: none;
-            border-color: #555;
-        }
-        .hidden {
-            display: none !important;
-        }
-        .chatgpt-fields {
-            background: #fafafa;
-            border-left: 2px solid #999;
-            padding: 20px;
-            margin-top: 20px;
-            margin-bottom: 20px;
-            border-radius: 4px;
-        }
-        .chatgpt-fields h3 {
-            margin: 0 0 15px 0;
-            color: #333;
-            font-size: 15px;
-            font-weight: 600;
-        }
-        .btn {
-            width: 100%;
-            padding: 12px;
-            background: #333;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            font-size: 15px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-        .btn:hover {
-            background: #555;
-        }
-        .btn:active {
-            background: #222;
-        }
-        .info {
-            background: #f9f9f9;
-            border-left: 2px solid #ccc;
-            padding: 12px;
-            margin-top: 20px;
-            border-radius: 4px;
-            font-size: 13px;
-            color: #666;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>Subtitle Translate</title>
+<link rel="icon" href="/assets/logo.png" type="image/png">
+<style>
+  /* Bang mau lay theo icon cua addon: nen toi, chu kem, mot diem nhan vang dong.
+     Che do sang va toi deu dinh nghia day du, khong cai nao la bien the cua cai kia. */
+  :root {
+    --ink: #14110f;
+    --panel: #1c1815;
+    --raised: #241f1a;
+    --rule: #2f2822;
+    --text: #f2ece2;
+    --muted: #9a9187;
+    --gold: #d8a047;
+    --gold-ink: #14110f;
+    --danger: #d98b6a;
+    color-scheme: dark;
+  }
+  :root[data-theme="light"] {
+    --ink: #f4f1ea;
+    --panel: #ffffff;
+    --raised: #faf8f3;
+    --rule: #e2dbcd;
+    --text: #191512;
+    --muted: #6f665c;
+    --gold: #9d6f16;
+    --gold-ink: #ffffff;
+    --danger: #a24f24;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --ink: #f4f1ea;
+      --panel: #ffffff;
+      --raised: #faf8f3;
+      --rule: #e2dbcd;
+      --text: #191512;
+      --muted: #6f665c;
+      --gold: #9d6f16;
+      --gold-ink: #ffffff;
+      --danger: #a24f24;
+      color-scheme: light;
+    }
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, sans-serif;
+    background: var(--ink);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 40px 20px 64px;
+    line-height: 1.5;
+  }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 12px;
+    max-width: 560px;
+    width: 100%;
+    padding: 34px 32px 30px;
+    position: relative;
+  }
+
+  /* Phan dau trang dung dang mot khoi phu de that: so thu tu, dong moc thoi gian,
+     roi den loi thoai. Do la thu dac trung nhat cua chinh cong viec addon nay lam. */
+  .cue-no,
+  .cue-time {
+    font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+  }
+  .cue-no { color: var(--gold); }
+  .cue-time { color: var(--muted); margin-bottom: 10px; }
+
+  h1 {
+    font-size: 27px;
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    margin-bottom: 6px;
+  }
+
+  .lede { color: var(--muted); font-size: 14px; margin-bottom: 28px; }
+
+  .theme-toggle {
+    position: absolute;
+    top: 22px;
+    right: 22px;
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    border: 1px solid var(--rule);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .theme-toggle:hover { color: var(--gold); border-color: var(--gold); }
+
+  .field { margin-bottom: 18px; }
+
+  .field-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 7px;
+  }
+
+  label {
+    display: block;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  select, input[type="text"] {
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--raised);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 14px;
+    font-family: inherit;
+    transition: border-color 0.15s;
+  }
+  select:focus, input[type="text"]:focus {
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+    border-color: var(--gold);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 22%, transparent);
+  }
+
+  .link-pill {
+    font-size: 12px;
+    color: var(--gold);
+    text-decoration: none;
+    border-bottom: 1px solid color-mix(in srgb, var(--gold) 40%, transparent);
+    white-space: nowrap;
+  }
+  .link-pill:hover { border-bottom-color: var(--gold); }
+
+  .ai-block {
+    border-left: 2px solid var(--gold);
+    background: var(--raised);
+    border-radius: 0 8px 8px 0;
+    padding: 18px 18px 4px;
+    margin: 22px 0;
+  }
+  .ai-block h2 {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 16px;
+  }
+
+  .row { display: flex; gap: 8px; }
+  .row select, .row input { flex: 1; }
+
+  .ghost-btn {
+    padding: 0 14px;
+    background: transparent;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    color: var(--muted);
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .ghost-btn:hover:not(:disabled) { color: var(--gold); border-color: var(--gold); }
+  .ghost-btn:disabled { opacity: 0.55; cursor: default; }
+
+  .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .hint.error { color: var(--danger); }
+
+  .actions { display: flex; gap: 10px; margin-top: 26px; }
+
+  .btn {
+    flex: 1;
+    padding: 12px 14px;
+    background: var(--gold);
+    color: var(--gold-ink);
+    border: 1px solid var(--gold);
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: filter 0.15s;
+  }
+  .btn:hover { filter: brightness(1.08); }
+  .btn.secondary {
+    background: transparent;
+    color: var(--text);
+    border-color: var(--rule);
+    font-weight: 500;
+  }
+  .btn.secondary:hover { border-color: var(--gold); color: var(--gold); filter: none; }
+
+  .note {
+    margin-top: 24px;
+    padding-top: 18px;
+    border-top: 1px solid var(--rule);
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+  .note strong { color: var(--text); font-weight: 600; }
+
+  .hidden { display: none !important; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
+
+  @media (max-width: 480px) {
+    .card { padding: 26px 20px 24px; }
+    .actions { flex-direction: column; }
+  }
+</style>
 </head>
 <body>
-    <div class="container">
-        <h1>Auto Subtitle Translate</h1>
-        <p class="subtitle">Configure your subtitle translation preferences</p>
+  <main class="card">
+    <button type="button" class="theme-toggle" id="themeToggle" aria-label="Switch between light and dark">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+        <circle cx="12" cy="12" r="4.2"></circle>
+        <path d="M12 2.6v2M12 19.4v2M2.6 12h2M19.4 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M18.7 5.3l-1.4 1.4M6.7 17.3l-1.4 1.4"></path>
+      </svg>
+    </button>
 
-        <form id="configForm">
-            <div class="form-group">
-                <label for="provider">Translation Provider</label>
-                <select id="provider" name="provider" required>
-                    <option value="Google Translate">Google Translate</option>
-                    <option value="OpenAI">OpenAI</option>
-                    <option value="Google Gemini">Google Gemini</option>
-                    <option value="OpenRouter">OpenRouter</option>
-                    <option value="Groq">Groq</option>
-                    <option value="Together AI">Together AI</option>
-                    <option value="Custom">Custom (OpenAI Compatible)</option>
-                </select>
-            </div>
+    <p class="cue-no">01</p>
+    <p class="cue-time">00:00:00,000 &rarr; 00:00:04,000</p>
+    <h1>Subtitle Translate</h1>
+    <p class="lede">
+      English subtitles from OpenSubtitles, translated into your language and cached on this
+      server. Pick a provider, paste a key, install.
+    </p>
 
-            <div class="form-group">
-                <label for="translateto">Translate To</label>
-                <select id="translateto" name="translateto" required>
-                </select>
-            </div>
+    <form id="configForm">
+      <div class="field">
+        <div class="field-head"><label for="provider">Translation provider</label></div>
+        <select id="provider" name="provider" required></select>
+      </div>
 
-            <div id="aiFields" class="chatgpt-fields hidden">
-                <h3 id="aiFieldsTitle">AI Configuration</h3>
+      <div class="field">
+        <div class="field-head"><label for="translateto">Translate into</label></div>
+        <select id="translateto" name="translateto" required></select>
+      </div>
 
-                <div class="form-group">
-                    <label for="apikey">API Key</label>
-                    <input type="text" id="apikey" name="apikey" placeholder="Enter your API key">
-                </div>
+      <div id="aiFields" class="ai-block hidden">
+        <h2 id="aiFieldsTitle">Model settings</h2>
 
-                <div class="form-group" id="modelSelectGroup">
-                    <label for="model_select">Model</label>
-                    <select id="model_select" class="input">
-                    </select>
-                </div>
+        <div class="field">
+          <div class="field-head">
+            <label for="apikey">API key</label>
+            <a class="link-pill" id="keyLink" href="#" target="_blank" rel="noopener">Get a key</a>
+          </div>
+          <input type="text" id="apikey" name="apikey" placeholder="Paste your key" autocomplete="off" spellcheck="false">
+        </div>
 
-                <div class="form-group hidden" id="baseUrlGroup">
-                    <label for="base_url">API Base URL</label>
-                    <input type="text" id="base_url" name="base_url" placeholder="https://api.example.com/v1">
-                </div>
+        <div class="field hidden" id="baseUrlGroup">
+          <div class="field-head"><label for="base_url">API base URL</label></div>
+          <input type="text" id="base_url" name="base_url" placeholder="https://api.example.com/v1" spellcheck="false">
+        </div>
 
-                <div class="form-group hidden" id="modelNameGroup">
-                    <label for="model_name">Model Name</label>
-                    <input type="text" id="model_name" name="model_name" placeholder="model-name">
-                </div>
-            </div>
+        <div class="field" id="modelGroup">
+          <div class="field-head"><label for="model_select">Model</label></div>
+          <div class="row">
+            <select id="model_select"></select>
+            <button type="button" class="ghost-btn" id="loadModels">Load from provider</button>
+          </div>
+          <p class="hint" id="modelHint">
+            Lists go stale as providers retire models. Load them from your provider to see what
+            your key can actually reach today.
+          </p>
+        </div>
 
-            <button type="submit" class="btn">Install Addon</button>
+        <div class="field hidden" id="modelNameGroup">
+          <div class="field-head"><label for="model_name">Model name</label></div>
+          <input type="text" id="model_name" name="model_name" placeholder="model-name" spellcheck="false">
+          <p class="hint">
+            Separate several models with commas to fall back in order when one runs out of quota.
+          </p>
+        </div>
+      </div>
 
-            <div class="info">
-                Your configuration will be saved securely and used for subtitle translation.
-            </div>
-        </form>
-    </div>
+      <div class="actions">
+        <button type="submit" class="btn">Install in Stremio</button>
+        <button type="button" class="btn secondary" id="copyLink">Copy link for Nuvio</button>
+      </div>
 
-    <script>
-        const languages = <%= languages %>;
-        const baseUrl = '<%= baseUrl %>';
+      <p class="note">
+        <strong>Your key travels inside the install link.</strong> Anyone you send that link to can
+        spend your quota, so give each person their own key rather than sharing yours.
+      </p>
+    </form>
+  </main>
 
-        const languageSelect = document.getElementById('translateto');
-        languages.forEach(lang => {
-            const option = document.createElement('option');
-            option.value = lang;
-            option.textContent = lang;
-            languageSelect.appendChild(option);
-        });
-        languageSelect.value = 'English';
+<script>
+  const languages = <%= languages %>;
+  const baseUrl = '<%= baseUrl %>';
 
-        const providerSelect = document.getElementById('provider');
-        const aiFields = document.getElementById('aiFields');
-        const aiFieldsTitle = document.getElementById('aiFieldsTitle');
-        const modelSelectGroup = document.getElementById('modelSelectGroup');
-        const modelSelect = document.getElementById('model_select');
-        const baseUrlGroup = document.getElementById('baseUrlGroup');
-        const modelNameGroup = document.getElementById('modelNameGroup');
+  /* Danh sach model o day chi la loi tat cho lan dau. Nut "Load from provider" hoi thang
+     nha cung cap bang chinh khoa cua nguoi dung, nen khong bao gio phai sua tay lai. */
+  const providerConfig = {
+    'Google Translate': { fields: false },
+    'Google Gemini': {
+      fields: true,
+      title: 'Google Gemini',
+      baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+      keyUrl: 'https://aistudio.google.com/apikey',
+      models: ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.7-flash', 'gemini-2.5-flash']
+    },
+    'OpenAI': {
+      fields: true,
+      title: 'OpenAI',
+      baseUrl: 'https://api.openai.com/v1',
+      keyUrl: 'https://platform.openai.com/api-keys',
+      models: ['gpt-4o-mini', 'gpt-4o']
+    },
+    'OpenRouter': {
+      fields: true,
+      title: 'OpenRouter',
+      baseUrl: 'https://openrouter.ai/api/v1',
+      keyUrl: 'https://openrouter.ai/keys',
+      models: ['google/gemini-3.7-flash', 'google/gemini-3.8-flash', 'qwen/qwen3.8-flash']
+    },
+    'Groq': {
+      fields: true,
+      title: 'Groq',
+      baseUrl: 'https://api.groq.com/openai/v1',
+      keyUrl: 'https://console.groq.com/keys',
+      models: ['llama-3.3-70b-versatile']
+    },
+    'Together AI': {
+      fields: true,
+      title: 'Together AI',
+      baseUrl: 'https://api.together.xyz/v1',
+      keyUrl: 'https://api.together.ai/settings/api-keys',
+      models: ['meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo']
+    },
+    'Custom': {
+      fields: true,
+      title: 'Custom, any OpenAI compatible endpoint',
+      keyUrl: '',
+      custom: true
+    }
+  };
 
-        const providerConfig = {
-            'Google Translate': {
-                showFields: false
-            },
-            'OpenAI': {
-                showFields: true,
-                title: 'OpenAI Configuration',
-                baseUrl: 'https://api.openai.com/v1',
-                models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
-                showModelSelect: true,
-                showCustomFields: false
-            },
-            'Google Gemini': {
-                showFields: true,
-                title: 'Google Gemini Configuration',
-                baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/',
-                models: ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-2.0-flash-lite'],
-                showModelSelect: true,
-                showCustomFields: false
-            },
-            'OpenRouter': {
-                showFields: true,
-                title: 'OpenRouter Configuration',
-                baseUrl: 'https://openrouter.ai/api/v1',
-                models: ['google/gemini-2.0-flash-exp:free', 'anthropic/claude-3.5-sonnet', 'meta-llama/llama-3.1-405b-instruct'],
-                showModelSelect: true,
-                showCustomFields: false
-            },
-            'Groq': {
-                showFields: true,
-                title: 'Groq Configuration',
-                baseUrl: 'https://api.groq.com/openai/v1',
-                models: ['llama-3.3-70b-versatile', 'llama-3.1-70b-versatile', 'mixtral-8x7b-32768'],
-                showModelSelect: true,
-                showCustomFields: false
-            },
-            'Together AI': {
-                showFields: true,
-                title: 'Together AI Configuration',
-                baseUrl: 'https://api.together.xyz/v1',
-                models: ['meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo', 'mistralai/Mixtral-8x7B-Instruct-v0.1', 'Qwen/Qwen2.5-72B-Instruct-Turbo'],
-                showModelSelect: true,
-                showCustomFields: false
-            },
-            'Custom': {
-                showFields: true,
-                title: 'Custom Provider Configuration',
-                showModelSelect: false,
-                showCustomFields: true
-            }
-        };
+  const el = (id) => document.getElementById(id);
+  const providerSelect = el('provider');
+  const languageSelect = el('translateto');
+  const aiFields = el('aiFields');
+  const aiFieldsTitle = el('aiFieldsTitle');
+  const modelGroup = el('modelGroup');
+  const modelSelect = el('model_select');
+  const modelNameGroup = el('modelNameGroup');
+  const baseUrlGroup = el('baseUrlGroup');
+  const keyLink = el('keyLink');
+  const modelHint = el('modelHint');
 
-        function updateProviderFields() {
-            const provider = providerSelect.value;
-            const config = providerConfig[provider];
+  Object.keys(providerConfig).forEach((name) => {
+    const option = document.createElement('option');
+    option.value = name;
+    option.textContent = name === 'Custom' ? 'Custom (OpenAI compatible)' : name;
+    providerSelect.appendChild(option);
+  });
 
-            if (!config.showFields) {
-                aiFields.classList.add('hidden');
-                return;
-            }
+  languages.forEach((lang) => {
+    const option = document.createElement('option');
+    option.value = lang;
+    option.textContent = lang;
+    languageSelect.appendChild(option);
+  });
+  languageSelect.value = 'English';
 
-            aiFields.classList.remove('hidden');
-            aiFieldsTitle.textContent = config.title;
+  const OTHER = '__other__';
 
-            if (config.showModelSelect) {
-                modelSelectGroup.classList.remove('hidden');
-                baseUrlGroup.classList.add('hidden');
-                modelNameGroup.classList.add('hidden');
+  function fillModels(list, selected) {
+    modelSelect.innerHTML = '';
+    list.forEach((model) => {
+      const option = document.createElement('option');
+      option.value = model;
+      option.textContent = model;
+      modelSelect.appendChild(option);
+    });
+    const other = document.createElement('option');
+    other.value = OTHER;
+    other.textContent = 'Other, type it myself';
+    modelSelect.appendChild(other);
+    if (selected && list.includes(selected)) modelSelect.value = selected;
+  }
 
-                modelSelect.innerHTML = '';
-                config.models.forEach(model => {
-                    const option = document.createElement('option');
-                    option.value = model;
-                    option.textContent = model;
-                    modelSelect.appendChild(option);
-                });
-            } else if (config.showCustomFields) {
-                modelSelectGroup.classList.add('hidden');
-                baseUrlGroup.classList.remove('hidden');
-                modelNameGroup.classList.remove('hidden');
-            }
-        }
+  function currentProvider() {
+    return providerConfig[providerSelect.value];
+  }
 
-        providerSelect.addEventListener('change', updateProviderFields);
-        updateProviderFields();
+  function updateProviderFields() {
+    const config = currentProvider();
 
-        document.getElementById('configForm').addEventListener('submit', function(e) {
-            e.preventDefault();
+    if (!config.fields) {
+      aiFields.classList.add('hidden');
+      return;
+    }
 
-            const provider = document.getElementById('provider').value;
-            const providerCfg = providerConfig[provider];
+    aiFields.classList.remove('hidden');
+    aiFieldsTitle.textContent = config.title;
 
-            let base_url = '';
-            let model_name = '';
+    keyLink.classList.toggle('hidden', !config.keyUrl);
+    if (config.keyUrl) keyLink.href = config.keyUrl;
 
-            if (provider !== 'Google Translate') {
-                if (providerCfg.showModelSelect) {
-                    base_url = providerCfg.baseUrl;
-                    model_name = document.getElementById('model_select').value;
-                } else if (providerCfg.showCustomFields) {
-                    base_url = document.getElementById('base_url').value;
-                    model_name = document.getElementById('model_name').value;
-                }
-            }
+    baseUrlGroup.classList.toggle('hidden', !config.custom);
+    modelGroup.classList.toggle('hidden', !!config.custom);
+    modelNameGroup.classList.toggle('hidden', !config.custom);
 
-            const config = {
-                provider: provider,
-                translateto: document.getElementById('translateto').value,
-                apikey: document.getElementById('apikey').value || '',
-                base_url: base_url,
-                model_name: model_name
-            };
+    if (!config.custom) fillModels(config.models);
+  }
 
-            const configStr = encodeURIComponent(JSON.stringify(config));
-            const host = baseUrl.replace(/^https?:\/\//, '');
-            const installUrl = `stremio://${host}/${configStr}/manifest.json`;
+  modelSelect.addEventListener('change', () => {
+    const typing = modelSelect.value === OTHER;
+    modelNameGroup.classList.toggle('hidden', !typing);
+    if (typing) el('model_name').focus();
+  });
 
-            window.location.href = installUrl;
-        });
-    </script>
+  el('loadModels').addEventListener('click', async () => {
+    const config = currentProvider();
+    const apikey = el('apikey').value.trim();
+    const endpoint = config.custom ? el('base_url').value.trim() : config.baseUrl;
+    const button = el('loadModels');
+
+    if (!apikey || !endpoint) {
+      modelHint.textContent = 'Enter the key first, then load the list.';
+      modelHint.classList.add('error');
+      return;
+    }
+
+    button.disabled = true;
+    button.textContent = 'Loading';
+    modelHint.classList.remove('error');
+    modelHint.textContent = 'Asking the provider what your key can reach.';
+
+    try {
+      const response = await fetch('/api/models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ base_url: endpoint, apikey })
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Request failed');
+
+      fillModels(payload.models, modelSelect.value);
+      modelGroup.classList.remove('hidden');
+      modelHint.textContent = payload.models.length + ' models available to this key.';
+    } catch (error) {
+      modelHint.textContent = 'Could not load the list: ' + error.message;
+      modelHint.classList.add('error');
+    } finally {
+      button.disabled = false;
+      button.textContent = 'Load from provider';
+    }
+  });
+
+  function buildConfig() {
+    const config = currentProvider();
+    let base_url = '';
+    let model_name = '';
+
+    if (config.fields) {
+      base_url = config.custom ? el('base_url').value.trim() : config.baseUrl;
+      const picked = modelSelect.value;
+      model_name =
+        config.custom || picked === OTHER || modelGroup.classList.contains('hidden')
+          ? el('model_name').value.trim()
+          : picked;
+    }
+
+    return {
+      provider: providerSelect.value,
+      translateto: languageSelect.value,
+      apikey: el('apikey').value.trim() || '',
+      base_url: base_url,
+      model_name: model_name
+    };
+  }
+
+  function manifestUrl() {
+    return baseUrl.replace(/\/+$/, '') + '/' + encodeURIComponent(JSON.stringify(buildConfig())) + '/manifest.json';
+  }
+
+  el('configForm').addEventListener('submit', (event) => {
+    event.preventDefault();
+    window.location.href = 'stremio://' + manifestUrl().replace(/^https?:\/\//, '');
+  });
+
+  el('copyLink').addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    const url = manifestUrl();
+    try {
+      await navigator.clipboard.writeText(url);
+      button.textContent = 'Copied';
+    } catch (error) {
+      window.prompt('Copy this link', url);
+      return;
+    }
+    setTimeout(() => { button.textContent = 'Copy link for Nuvio'; }, 1800);
+  });
+
+  const root = document.documentElement;
+  const saved = localStorage.getItem('theme');
+  if (saved) root.dataset.theme = saved;
+  el('themeToggle').addEventListener('click', () => {
+    const current = root.dataset.theme ||
+      (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    const next = current === 'dark' ? 'light' : 'dark';
+    root.dataset.theme = next;
+    localStorage.setItem('theme', next);
+  });
+
+  updateProviderFields();
+  providerSelect.addEventListener('change', updateProviderFields);
+</script>
 </body>
 </html>

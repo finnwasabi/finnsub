@@ -1,152 +1,71 @@
-# Stremio Auto Subtitle Translate Addon
+# Subtitle Translate
 
-This Stremio addon automatically translates subtitles from OpenSubtitles to your desired language using various translation providers.
+A Stremio addon that fetches English subtitles from OpenSubtitles and translates them into the
+language you pick, using Google Translate or any OpenAI compatible model. Timing, line breaks and
+formatting are preserved, and every translation is cached so the next play is instant.
 
-## Features
+This is a fork of [HimAndRobot/stremio-translate-subtitle-by-geanpn](https://github.com/HimAndRobot/stremio-translate-subtitle-by-geanpn)
+by Gean Pedro da Silva, built on the upstream `old` branch: SQLite, an in-memory queue, one
+container, no Redis or MySQL.
 
-- Fetches subtitles from OpenSubtitlesV3
-- Configurable target language
-- Queue system for processing translation requests
-- Caching of translated subtitles for improved performance
-- Automatic provider fallback
-- Rate limit protection
-- Provider rotation for optimal performance
+## What this fork changes
 
-## How it Works
+**A failed translation is no longer permanent.** Upstream wrote the database row when a job was
+queued rather than when it finished, so any failure left a row pointing at the "please wait"
+placeholder and every later request served that placeholder back forever. Rows are now written
+after the file is on disk, and a row is trusted only when the file behind it really exists.
 
-This addon follows the following workflow:
+**A bad batch no longer costs the whole episode.** Failing batches are split in half and retried
+down to a single line; whatever still fails is kept in the original language so timings stay
+aligned. Model output is parsed leniently, which recovers the code fences, stray prose, trailing
+commas and raw line breaks that small models produce.
 
-1. Receives subtitle request from Stremio
-2. Checks if translated subtitles exist in the database
-3. If not found, fetches subtitles from OpenSubtitles
-4. Adds subtitles to a queue for translation
-5. Returns a placeholder message during translation processing
-6. Saves translated subtitles upon completion
+**Quota errors are understood.** They are not retried, since a daily allowance does not come back
+in three seconds, and `model_name` accepts a comma separated list so a run moves to the next model
+when one is spent. Spent models are remembered for an hour.
 
-## Configuration
+**Keys stay out of the logs.** Stremio carries addon configuration in the request path, so the
+provider key was printed on every request. It is now masked everywhere, and operators should
+filter their reverse proxy access logs too.
 
-This addon can be configured via Stremio with the following options:
+**Subtitle files are parsed by block.** The old line-by-line state machine could drop or duplicate
+one line depending on whether the file ended with a blank line, which silently shifted every later
+subtitle onto the wrong timestamp.
 
-- Provider: Choose from Google Translate, or ChatGPT (OpenAI Compatible Providers)
-- BASE URL: Required for ChatGPT
-  - ChatGPT: https://api.openai.com/v1/responses
-  - Gemini: https://generativelanguage.googleapis.com/v1beta/openai/
-  - OpenRouter: https://openrouter.ai/api/v1/chat/completions
-- API Key: Required for ChatGPT
-- Target Language: Select your desired translation language
+**The configure page was rebuilt**: light and dark, a link to each provider's key page, and a
+button that asks your provider which models your key can actually reach, because a hard-coded list
+goes stale every few months.
 
-## Technical Details
+Smaller things: a real addon logo served over an absolute URL, ISO 639-2 language codes so clients
+name the track instead of calling it unknown, batch size and pauses moved to environment
+variables, temporary download directories cleaned up, and `npm ci` in the Dockerfile.
 
-- Built with Node.js
-- Uses `stremio-addon-sdk` for Stremio integration
-- Implements a queue system using `better-queue`
-- Stores subtitles on the local file system
+## Running it
 
-### Translation Providers
+```bash
+git clone https://github.com/finnwasabi/finnsub.git
+cd finnsub
+cp .env.example .env      # set BASE_URL to the public address of the addon
+docker compose up -d
+```
 
-- Google Translate
-  - Web scraping method
-- ChatGPT (Compatible API)
-  - Google Gemini
-  - OpenRouter
+Then open `/configure`, choose a provider, paste a key and install. Nothing is stored server side
+except the translated subtitles: the configuration, including the key, lives in the addon URL,
+so give each person their own key rather than sharing a link.
 
-### Queue System
+### Settings worth knowing
 
-This addon uses a queue system to efficiently process translation requests:
+| Variable | Default | What it does |
+|---|---|---|
+| `BASE_URL` | none | public address, used in subtitle and logo URLs |
+| `TRANSLATE_BATCH_SIZE` | 200 | subtitle lines per request, 50 for ChatGPT API |
+| `TRANSLATE_BATCH_PAUSE_MS` | 4000 | pause between batches |
+| `TRANSLATE_MAX_RETRIES` | 3 | retries for failures that are not quota related |
+| `QUOTA_MEMORY_MS` | 3600000 | how long a spent model is skipped |
+| `DEBUG_TRANSLATE` | false | write mismatched batches to `debug/` |
 
-- Implements `better-queue` to manage translation tasks
-- Concurrent processing of subtitles
-- Automatic retries on failure
-- Progress tracking and status updates
+## Credit
 
-### Storage
-
-- Subtitles are stored on the local file system
-- Organized by provider, language, and media ID
-- Translations are cached for improved performance
-
-### Translation Process
-
-1. Subtitle files are parsed and split into chunks
-2. Each chunk is translated using the selected provider
-3. Translated chunks are reassembled while maintaining timing
-4. The final subtitle file is saved in SRT format
-
-## Installation
-
-1. Web Installation (Recommended)
-
-   - Open Stremio
-   - Go to the following URL: In progress
-   - Click "Install Addon"
-   - Select your desired translation settings
-   - Click "Install"
-   - The addon will be automatically configured in Stremio
-
-2. Manual Installation
-
-   - Open Stremio
-   - Navigate to Addons
-   - Click the "Community Addons" tab
-   - Paste this URL: In progress
-   - Click "Install"
-
-3. Self-Hosting
-
-   ```bash
-   # Clone the repository
-   git clone https://github.com/HimAndRobot/stremio-translate-subtitle-by-geanpn.git
-   cd stremio-auto-translate
-
-   # Install dependencies
-   npm install
-
-   # Create necessary directories
-   mkdir -p debug subtitles
-
-   # Create a .env file from .env.example
-   cp .env.example .env
-
-   # Start the addon
-   npm start
-   ```
-
-   Then, add `http://localhost:3000/manifest.json` to Stremio.
-
-The addon will be available at `http://localhost:3000`.
-
-## Environment Variables
-
-- `PORT`: Server port (default: 3000)
-- `ADDRESS`: Server address (default: 0.0.0.0)
-- `BASE_URL`: Base URL for subtitle files
-
-## Contributing
-
-Bug reports and pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
-
-## Support
-
-Bug reports: geanpn@gmail.com
-Donations: geanpn@gmail.com
-
-## License
-
-[MIT](https://choosealicense.com/licenses/mit/)
-
-## Credits
-
-This project is based on [Auto-Subtitle-Translate-by-Sonsuz-Anime](https://github.com/sonsuzanime/Auto-Subtitle-Translate-by-Sonsuz-Anime) by @sonsuzanime. The original project was enhanced with:
-
-### Improvements:
-
-- Code optimization
-- Queue system for handling multiple translation requests
-- Improved error handling
-- Better caching system
-- Provider fallback system
-- Rate limit protection
-- Automatic provider rotation
-- Chunk optimization for large subtitles
-
-Thanks to @sonsuzanime for providing the original implementation that made this project possible.
+All of the original work is Gean Pedro da Silva's. Upstream is still developed on `main`, which
+runs a heavier stack with MySQL and Redis and has features this branch does not, including a
+translation dashboard. If you want that, go there. MIT licensed, same as upstream.

@@ -1,7 +1,7 @@
 {
-  "id": "org.autotranslate.geanpn",
+  "id": "com.finnwasabi.subtitletranslate",
   "version": "1.0.2",
-  "name": "Auto Subtitle Translate by geanpn",
+  "name": "Subtitle Translate",
   "logo": "/assets/logo.png",
   "configurable": true,
   "behaviorHints": {
@@ -14,7 +14,10 @@
       "title": "Provider",
       "type": "select",
       "required": true,
-      "options": ["Google Translate", "ChatGPT API"]
+      "options": [
+        "Google Translate",
+        "ChatGPT API"
+      ]
     },
     {
       "key": "apikey",
@@ -24,7 +27,9 @@
       "dependencies": [
         {
           "key": "provider",
-          "value": ["ChatGPT API"]
+          "value": [
+            "ChatGPT API"
+          ]
         }
       ]
     },
@@ -37,7 +42,9 @@
       "dependencies": [
         {
           "key": "provider",
-          "value": ["ChatGPT API"]
+          "value": [
+            "ChatGPT API"
+          ]
         }
       ]
     },
@@ -50,7 +57,9 @@
       "dependencies": [
         {
           "key": "provider",
-          "value": ["ChatGPT API"]
+          "value": [
+            "ChatGPT API"
+          ]
         }
       ]
     },
@@ -59,11 +68,18 @@
       "title": "Translate to",
       "type": "select",
       "required": true,
-      "options": ["English"]
+      "options": [
+        "English"
+      ]
     }
   ],
-  "description": "This addon takes subtitles from OpenSubtitlesV3 then translates into desired language using Google Translate, or ChatGPT. For donations:in progress Bug report: geanpn@gmail.com",
-  "types": ["series", "movie"],
+  "description": "Takes subtitles from OpenSubtitles and translates them into the language you pick, using Google Translate or any OpenAI compatible model.",
+  "types": [
+    "series",
+    "movie"
+  ],
   "catalogs": [],
-  "resources": ["subtitles"]
+  "resources": [
+    "subtitles"
+  ]
 }

@@ -57,9 +57,9 @@ async function isUsableSubtitle(relativePath) {
 }
 
 const builder = new addonBuilder({
-  id: "org.autotranslate.geanpn",
+  id: "com.finnwasabi.subtitletranslate",
   version: "1.0.2",
-  name: "Auto Subtitle Translate by geanpn",
+  name: "Subtitle Translate",
   logo: `${process.env.BASE_URL || ""}/assets/logo.png`,
   behaviorHints: {
     configurable: true,
@@ -90,7 +90,7 @@ const builder = new addonBuilder({
     },
   ],
   description:
-    "This addon takes subtitles from OpenSubtitlesV3 then translates into desired language using Google Translate, or ChatGPT (OpenAI Compatible Providers). For donations:in progress Bug report: geanpn@gmail.com",
+    "Takes subtitles from OpenSubtitles and translates them into the language you pick, using Google Translate or any OpenAI compatible model. Timing and formatting are preserved, and every translation is cached so the next play is instant.",
   types: ["series", "movie"],
   catalogs: [],
   resources: ["subtitles"],
@@ -126,9 +126,7 @@ builder.defineSubtitlesHandler(async function (args) {
 
   // Extract imdbid from id
   let imdbid = null;
-  if (id.startsWith("dcool-")) {
-    imdbid = "tt5994346";
-  } else if (id !== null && id.startsWith("tt")) {
+  if (id !== null && id.startsWith("tt")) {
     const parts = id.split(":");
     if (parts.length >= 1) {
       imdbid = parts[0];
@@ -326,18 +324,6 @@ function parseId(id) {
     } else {
       return { type: "movie", season: 1, episode: 1 };
     }
-  } else if (id.startsWith("dcool-")) {
-    // New format: dcool-tomorrow-with-you::tomorrow-with-you-episode-1
-    const match = id.match(/dcool-(.+)::(.+)-episode-(\d+)/);
-    if (match) {
-      const [, , title, episode] = match;
-      return {
-        type: "series",
-        title: title,
-        episode: Number(episode),
-        season: 1, // Assuming season 1 for this format
-      };
-    }
   }
   return { type: "unknown", season: 0, episode: 0 };
 }
@@ -386,6 +372,48 @@ app.get("/configure", (_req, res) => {
     res.setHeader("Content-Type", "text/html");
     res.send(html);
   });
+});
+
+// Danh sach model viet cung trong trang cau hinh luon lac hau: nha cung cap khai tu
+// model cu vai thang mot lan. Endpoint nay hoi thang ho bang chinh khoa cua nguoi dung,
+// nen danh sach khong bao gio cu. Khoa di trong than yeu cau chu khong trong duong dan,
+// de no khong roi vao log truy cap.
+app.post("/api/models", express.json(), async (req, res) => {
+  const { base_url, apikey } = req.body || {};
+  if (!base_url || !apikey) {
+    return res.status(400).json({ error: "base_url and apikey are required" });
+  }
+
+  try {
+    const url = `${String(base_url).replace(/\/+$/, "")}/models`;
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${apikey}`,
+        "x-goog-api-key": apikey,
+      },
+      signal: AbortSignal.timeout(20000),
+    });
+
+    if (!response.ok) {
+      return res
+        .status(response.status)
+        .json({ error: `Provider answered ${response.status}` });
+    }
+
+    const payload = await response.json();
+    const list = payload.data || payload.models || [];
+    // Nha cung cap tra ve ca model sinh anh, doc, nhung, xep hang. Chung khong dich
+    // duoc gi, de vao danh sach chi lam nguoi dung chon nham.
+    const NOT_FOR_TEXT = /embed|image|audio|tts|whisper|vision|rerank|moderation|dall-e|veo|imagen|sora/i;
+    const models = list
+      .map((item) => String(item.id || item.name || "").replace(/^models\//, ""))
+      .filter((id) => id && !NOT_FOR_TEXT.test(id))
+      .sort();
+
+    res.json({ models });
+  } catch (error) {
+    res.status(502).json({ error: error.message });
+  }
 });
 
 app.use("/subtitles", express.static("subtitles"));
