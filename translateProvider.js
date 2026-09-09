@@ -5,6 +5,12 @@ require("dotenv").config();
 
 const MAX_RETRIES = Number(process.env.TRANSLATE_MAX_RETRIES || 3);
 const REQUEST_TIMEOUT = Number(process.env.TRANSLATE_TIMEOUT_MS || 180000);
+const RETRY_BASE_MS = Number(process.env.TRANSLATE_RETRY_BASE_MS || 4000);
+// 429 co the la tran moi PHUT chu khong phai het han muc NGAY, ma hai cai deu tra ve
+// "429 no body" qua duong OpenAI-compatible nen khong phan biet duoc tu phan hoi. Cach
+// duy nhat de biet la cho het mot phut roi thu lai dung model do: qua duoc thi la tran
+// phut, van 429 thi moi la het ngay.
+const RATE_LIMIT_WAIT_MS = Number(process.env.TRANSLATE_RATE_WAIT_MS || 65000);
 
 /**
  * Het han muc thi thu lai bao nhieu lan cung vo ich, va con dot them han muc.
@@ -137,7 +143,8 @@ async function translateTextWithRetry(
   model_name,
   attempt = 1,
   maxRetries = MAX_RETRIES,
-  modelIndex = 0
+  modelIndex = 0,
+  waitedForRateLimit = false
 ) {
   // model_name nhan mot danh sach ngan cach bang dau phay, vi du
   // "gemini-3.6-flash, gemini-3.5-flash". Han muc mien phi tinh RIENG cho tung model,
@@ -221,7 +228,7 @@ async function translateTextWithRetry(
         );
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
+      await new Promise((resolve) => setTimeout(resolve, RETRY_BASE_MS * attempt));
       return translateTextWithRetry(
         texts,
         targetLanguage,
@@ -231,13 +238,35 @@ async function translateTextWithRetry(
         model_name,
         attempt + 1,
         maxRetries,
-        index
+        index,
+        waitedForRateLimit
       );
     }
 
     return Array.isArray(texts) ? resultArray : result.text;
   } catch (error) {
     if (isQuotaError(error)) {
+      if (!waitedForRateLimit) {
+        console.log(
+          `Rate limited on ${model}, waiting ${Math.round(
+            RATE_LIMIT_WAIT_MS / 1000
+          )}s to tell a per minute limit from a spent daily quota`
+        );
+        await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_WAIT_MS));
+        return translateTextWithRetry(
+          texts,
+          targetLanguage,
+          provider,
+          apikey,
+          base_url,
+          model_name,
+          1,
+          maxRetries,
+          index,
+          true
+        );
+      }
+
       markExhausted(model);
       const nextIndex = index + 1;
       if (nextIndex < models.length) {
@@ -253,7 +282,8 @@ async function translateTextWithRetry(
           model_name,
           1,
           maxRetries,
-          nextIndex
+          nextIndex,
+          false
         );
       }
       // Het sach model: bao dung loai loi de ben goi khoi cat nho lo ra thu lai,
@@ -272,7 +302,7 @@ async function translateTextWithRetry(
       `Attempt ${attempt}/${maxRetries} on ${model} failed with error:`,
       error.message
     );
-    await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
+    await new Promise((resolve) => setTimeout(resolve, RETRY_BASE_MS * attempt));
     return translateTextWithRetry(
       texts,
       targetLanguage,
@@ -282,7 +312,8 @@ async function translateTextWithRetry(
       model_name,
       attempt + 1,
       maxRetries,
-      index
+      index,
+      waitedForRateLimit
     );
   }
 }
