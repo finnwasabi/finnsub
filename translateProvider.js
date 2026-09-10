@@ -46,6 +46,63 @@ function isExhausted(model) {
   return true;
 }
 
+/**
+ * Khoa phu do phia may chu cap them, ngoai khoa nam trong cau hinh addon. Lam kieu nay
+ * thi khong phai cai lai addon tren TV box, va khoa thu hai khong bao gio nam trong URL
+ * nen khong lot vao log Caddy nhu khoa cu.
+ */
+const EXTRA_API_KEYS = String(process.env.TRANSLATE_EXTRA_API_KEYS || "")
+  .split(",")
+  .map((k) => k.trim())
+  .filter(Boolean);
+
+function buildKeys(apikey) {
+  const fromConfig = String(apikey || "")
+    .split(",")
+    .map((k) => k.trim())
+    .filter(Boolean);
+  const all = [...fromConfig, ...EXTRA_API_KEYS];
+  return all.filter((k, i) => all.indexOf(k) === i);
+}
+
+/**
+ * Han muc mien phi cua Google tinh rieng cho tung cap (khoa, model), nen phai ghi nho
+ * theo cap. Ghi nho theo rieng model la sai: khoa thu hai se bi coi la da can oan ngay
+ * khi khoa thu nhat can, va nua so han muc bi bo phi.
+ */
+const slotOf = (keyIndex, model) => `${keyIndex}|${model}`;
+// Chi bao so thu tu khoa ra log, tuyet doi khong bao gio bao gia tri khoa.
+const keyLabel = (i) => `khoa #${i + 1}`;
+
+// Tim cap (khoa, model) ke tiep con dung duoc. Di het moi cap roi moi chiu thua.
+function nextSlot(keys, models, keyIndex, modelIndex) {
+  const total = keys.length * models.length;
+  let k = keyIndex;
+  let m = modelIndex;
+  for (let step = 0; step < total; step++) {
+    m += 1;
+    if (m >= models.length) {
+      m = 0;
+      k = (k + 1) % keys.length;
+    }
+    if (!isExhausted(slotOf(k, models[m]))) return { keyIndex: k, modelIndex: m };
+  }
+  return null;
+}
+
+function pickSlot(keys, models, keyIndex, modelIndex) {
+  const safeKey = Math.min(keyIndex, Math.max(keys.length - 1, 0));
+  const safeModel = Math.min(modelIndex, Math.max(models.length - 1, 0));
+  if (!isExhausted(slotOf(safeKey, models[safeModel])))
+    return { keyIndex: safeKey, modelIndex: safeModel };
+  return (
+    nextSlot(keys, models, safeKey, safeModel) || {
+      keyIndex: safeKey,
+      modelIndex: safeModel,
+    }
+  );
+}
+
 function isQuotaError(error) {
   const status = error?.status || error?.response?.status;
   if (status === 429) return true;
@@ -144,7 +201,8 @@ async function translateTextWithRetry(
   attempt = 1,
   maxRetries = MAX_RETRIES,
   modelIndex = 0,
-  waitedForRateLimit = false
+  waitedForRateLimit = false,
+  keyIndex = 0
 ) {
   // model_name nhan mot danh sach ngan cach bang dau phay, vi du
   // "gemini-3.6-flash, gemini-3.5-flash". Han muc mien phi tinh RIENG cho tung model,
@@ -153,15 +211,13 @@ async function translateTextWithRetry(
     .split(",")
     .map((m) => m.trim())
     .filter(Boolean);
-  // Bo qua nhung model vua bao het han muc, tru khi tat ca deu dang bi danh dau.
-  let index = modelIndex;
-  while (index < models.length && isExhausted(models[index])) {
-    index++;
-  }
-  if (index >= models.length) {
-    index = modelIndex;
-  }
+  const keys = buildKeys(apikey);
+  // Bo qua cap (khoa, model) vua bao het han muc, tru khi moi cap deu dang bi danh dau.
+  const slot = pickSlot(keys, models, keyIndex, modelIndex);
+  const index = slot.modelIndex;
+  const activeKeyIndex = slot.keyIndex;
   const model = models[index] || models[0] || model_name;
+  const activeKey = keys[activeKeyIndex] || keys[0] || apikey;
 
   try {
     let result = null;
@@ -197,7 +253,7 @@ async function translateTextWithRetry(
         resultArray = await callOpenAiCompatible(
           texts,
           targetLanguage,
-          apikey,
+          activeKey,
           base_url,
           model
         );
@@ -239,7 +295,8 @@ async function translateTextWithRetry(
         attempt + 1,
         maxRetries,
         index,
-        waitedForRateLimit
+        waitedForRateLimit,
+        activeKeyIndex
       );
     }
 
@@ -263,15 +320,18 @@ async function translateTextWithRetry(
           1,
           maxRetries,
           index,
-          true
+          true,
+          activeKeyIndex
         );
       }
 
-      markExhausted(model);
-      const nextIndex = index + 1;
-      if (nextIndex < models.length) {
+      markExhausted(slotOf(activeKeyIndex, model));
+      const next = nextSlot(keys, models, activeKeyIndex, index);
+      if (next) {
         console.log(
-          `Quota reached on ${model}, switching to ${models[nextIndex]}`
+          `Quota reached on ${model} (${keyLabel(activeKeyIndex)}), switching to ${
+            models[next.modelIndex]
+          } (${keyLabel(next.keyIndex)})`
         );
         return translateTextWithRetry(
           texts,
@@ -282,14 +342,16 @@ async function translateTextWithRetry(
           model_name,
           1,
           maxRetries,
-          nextIndex,
-          false
+          next.modelIndex,
+          false,
+          next.keyIndex
         );
       }
       // Het sach model: bao dung loai loi de ben goi khoi cat nho lo ra thu lai,
       // vi cat nho chi lam ton them luot goi ma van bi tu choi.
       throw new QuotaError(
-        `Quota exhausted on every configured model (${models.join(", ")})`,
+        `Quota exhausted on every key and model (${keys.length} khoa x ` +
+          `${models.length} model: ${models.join(", ")})`,
         model
       );
     }
@@ -299,7 +361,7 @@ async function translateTextWithRetry(
     }
 
     console.error(
-      `Attempt ${attempt}/${maxRetries} on ${model} failed with error:`,
+      `Attempt ${attempt}/${maxRetries} on ${model} (${keyLabel(activeKeyIndex)}) failed with error:`,
       error.message
     );
     await new Promise((resolve) => setTimeout(resolve, RETRY_BASE_MS * attempt));
@@ -313,7 +375,8 @@ async function translateTextWithRetry(
       attempt + 1,
       maxRetries,
       index,
-      waitedForRateLimit
+      waitedForRateLimit,
+      activeKeyIndex
     );
   }
 }

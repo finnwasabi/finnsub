@@ -268,7 +268,10 @@ builder.defineSubtitlesHandler(async function (args) {
 
     // 3. Process and translate subtitles
     translationQueue.push({
-      subs: [foundSubtitle], // Pass the found subtitle to the queue
+      // Dua ca danh sach du phong chu khong chi ban dau. Nha cung cap co the liet ke
+      // mot ban roi tra ve kho nen rong luc tai that, luc do ben tai se chuyen sang ban
+      // ke tiep thay vi bo cuoc. Da gap that voi SubDL ngay 10/09/2026.
+      subs: subs,
       imdbid: imdbid,
       season: season,
       episode: episode,

@@ -1,10 +1,89 @@
 const axios = require("axios");
-const connection = require("./connection");
 const fs = require("fs").promises;
 
-const opensubtitlesbaseurl = "https://opensubtitles-v3.strem.io/subtitles/";
-
 const isoCodeMapping = require("./langs/iso_code_mapping.json");
+
+// Ba nguon phu de, cung mot giao thuc addon Stremio nen doc chung mot kieu.
+// OpenSubtitles khong can khoa. SubDL va SubSource bat buoc co khoa, thieu khoa
+// thi chung tra ve mot "phu de" gia bao loi chu khong tra ve mang rong.
+const OPENSUBTITLES_URL =
+  process.env.OPENSUBTITLES_URL || "https://opensubtitles-v3.strem.io";
+const SUBDL_URL = process.env.SUBDL_URL || "https://subdl.strem.top";
+const SUBSOURCE_URL = process.env.SUBSOURCE_URL || "https://subsource.strem.top";
+
+const SUBDL_API_KEY = (process.env.SUBDL_API_KEY || "").trim();
+const SUBSOURCE_API_KEY = (process.env.SUBSOURCE_API_KEY || "").trim();
+
+const SOURCE_TIMEOUT_MS = Number(process.env.SUBTITLE_SOURCE_TIMEOUT_MS || 9000);
+// So ban du phong se thu tai truoc khi chiu thua. Nha cung cap co the liet ke mot ban
+// roi tra ve kho nen rong khi tai that, nen liet ke duoc khong co nghia la dung duoc.
+const MAX_CANDIDATES = Number(process.env.SUBTITLE_MAX_CANDIDATES || 5);
+// Mot phu de that luon co nhieu khoi thoi gian. File bao loi cua nha cung cap chi co
+// dung mot khoi, vi du "No supported subtitle file found in the subtitle archive".
+const MIN_CUES = Number(process.env.SUBTITLE_MIN_CUES || 5);
+
+// Nhung ban ghi mang hinh dang phu de nhung thuc chat la thong bao loi cua nha cung cap.
+const ERROR_MARKS =
+  /invalid-addon-config|error-subtitle|error_api_key|addon-configuration/i;
+
+const b64 = (s) => Buffer.from(s).toString("base64");
+
+// Khoa SubDL va SubSource nam trong duong dan duoi dang base64. Axios thuong khong
+// nhet URL vao thong bao loi, nhung day la thu khong duoc phep sai mot lan nao,
+// nen chui sach moi doan base64 dai truoc khi ghi ra log.
+const scrub = (text) =>
+  String(text || "").replace(/[A-Za-z0-9+/=]{24,}/g, "<redacted>");
+
+// Duong dan tai nguyen chung: /subtitles/<type>/<id>.json
+const resourcePath = (type, imdbid, season, episode) =>
+  type === "series"
+    ? `subtitles/${type}/${imdbid}:${season}:${episode}.json`
+    : `subtitles/${type}/${imdbid}.json`;
+
+// Danh sach nguon se hoi, theo dung thu tu uu tien khi hoa diem.
+const buildSources = (type, imdbid, season, episode, targetLanguage) => {
+  const path = resourcePath(type, imdbid, season, episode);
+  const langs = `${targetLanguage},en`;
+  const sources = [{ name: "OpenSubtitles", url: `${OPENSUBTITLES_URL}/${path}` }];
+
+  if (SUBDL_API_KEY) {
+    const cfg = b64(`${SUBDL_API_KEY}/${langs}/false`);
+    sources.push({ name: "SubDL", url: `${SUBDL_URL}/${cfg}/${path}` });
+  }
+  if (SUBSOURCE_API_KEY) {
+    const cfg = b64(`${SUBSOURCE_API_KEY}/${langs}/false/type:${type}`);
+    sources.push({ name: "SubSource", url: `${SUBSOURCE_URL}/${cfg}/${path}` });
+  }
+  return sources;
+};
+
+// Hoi mot nguon. Khong bao gio nem ra: mot nguon chet khong duoc keo do ca chuoi.
+const fetchFromSource = async (source) => {
+  try {
+    const response = await axios.get(source.url, { timeout: SOURCE_TIMEOUT_MS });
+    const list = response.data && response.data.subtitles;
+    if (!Array.isArray(list)) return [];
+
+    const usable = list.filter(
+      (s) => s && s.url && !ERROR_MARKS.test(`${s.id || ""} ${s.url}`)
+    );
+    console.log(
+      `[subtitles] ${source.name}: ${usable.length} ban dung duoc / ${list.length} tra ve`
+    );
+    return usable.map((s) => ({ url: s.url, lang: s.lang, source: source.name }));
+  } catch (error) {
+    console.warn(`[subtitles] ${source.name} that bai: ${scrub(error.message)}`);
+    return [];
+  }
+};
+
+// Kiem file vua tai co that su la phu de khong. Dem khoi thoi gian la du: dau "-->"
+// la ASCII nen song qua moi bang ma, con file bao loi thi chi co mot khoi.
+const looksLikeRealSubtitle = (buffer) => {
+  const text = Buffer.from(buffer).toString("utf8");
+  const cues = (text.match(/-->/g) || []).length;
+  return cues >= MIN_CUES;
+};
 
 const downloadSubtitles = async (
   subtitles,
@@ -24,32 +103,41 @@ const downloadSubtitles = async (
     uniqueTempFolder = `subtitles/${oldisocode}/${imdbid}`;
   }
 
-  let filepaths = [];
+  // Ten file giu nguyen nhu khi chi co mot ban, de moi buoc phia sau khong doi gi.
+  const filePath = episode
+    ? `${uniqueTempFolder}/${imdbid}-subtitle_${episode}-1.srt`
+    : `${uniqueTempFolder}/${imdbid}-subtitle-1.srt`;
 
   for (let i = 0; i < subtitles.length; i++) {
-    const url = subtitles[i].url;
+    const candidate = subtitles[i];
+    const label = `${candidate.lang || "?"} tu ${candidate.source || "?"}`;
     try {
-      console.log(url);
-      const response = await axios.get(url, { responseType: "arraybuffer" });
+      const response = await axios.get(candidate.url, {
+        responseType: "arraybuffer",
+        timeout: SOURCE_TIMEOUT_MS,
+      });
 
-      let filePath = null;
-      if (episode) {
-        filePath = `${uniqueTempFolder}/${imdbid}-subtitle_${episode}-${
-          i + 1
-        }.srt`;
-      } else {
-        filePath = `${uniqueTempFolder}/${imdbid}-subtitle-${i + 1}.srt`;
+      if (!looksLikeRealSubtitle(response.data)) {
+        console.warn(
+          `[subtitles] bo ban ${label}: tai ve duoc nhung khong phai phu de that`
+        );
+        continue;
       }
-      console.log(filePath);
+
       await fs.writeFile(filePath, response.data);
-      console.log(`Subtitle downloaded and saved: ${filePath}`);
-      filepaths.push(filePath);
+      console.log(`[subtitles] dung ban ${label}: ${filePath}`);
+      return [filePath];
     } catch (error) {
-      console.error(`Subtitle download error: ${error.message}`);
-      throw error;
+      console.warn(`[subtitles] bo ban ${label}: ${scrub(error.message)}`);
     }
   }
-  return filepaths;
+
+  // Het ban du phong. Tra ve mang rong chu khong nem loi: ben goi da biet cach xu ly
+  // truong hop khong co phu de, con nem loi thi mat luon thong bao tu te cho nguoi xem.
+  console.warn(
+    `[subtitles] ca ${subtitles.length} ban du phong deu hong cho ${imdbid}`
+  );
+  return [];
 };
 
 const getsubtitles = async (
@@ -59,56 +147,45 @@ const getsubtitles = async (
   episode = null,
   newisocode
 ) => {
-  let url = opensubtitlesbaseurl;
+  const sources = buildSources(type, imdbid, season, episode, newisocode);
 
-  if (type === "series") {
-    url = url.concat(type, "/", imdbid, ":", season, ":", episode, ".json");
-  } else {
-    url = url.concat(type, "/", imdbid, ".json");
+  // Hoi song song. Nguon cham nhat quyet dinh tong thoi gian, khong phai tong cac nguon.
+  const results = await Promise.all(sources.map(fetchFromSource));
+  const subtitles = results.flat();
+
+  if (subtitles.length === 0) {
+    console.log(
+      `[subtitles] khong nguon nao co ban nao cho ${imdbid}${
+        season ? `:${season}:${episode}` : ""
+      }`
+    );
+    return null;
   }
 
-  try {
-    const response = await axios.get(url);
-    
+  const langOf = (s) => isoCodeMapping[s.lang] || s.lang;
+  const matching = (langCode) => subtitles.filter((s) => langOf(s) === langCode);
 
-    if (response.data.subtitles.length === 0) {
-      return null;
+  // Xep hang uu tien roi tra ve ca danh sach, khong chi mot ban. Nha cung cap co the
+  // liet ke mot ban ma tai ve lai hong, luc do ben tai se tu chuyen sang ban ke tiep.
+  const ranked = [];
+  const seen = new Set();
+  const push = (list) => {
+    for (const s of list) {
+      if (seen.has(s.url)) continue;
+      seen.add(s.url);
+      ranked.push(s);
     }
+  };
+  push(matching(newisocode)); // 1. San co dung ngon ngu dich, khoi phai dich lai
+  push(matching("en")); // 2. Tieng Anh de dich
+  push(subtitles); // 3. Con lai, con hon khong co gi
 
-    const subtitles = response.data.subtitles;
-
-    // Helper to find subtitle by language
-    const findSubtitle = (langCode) => {
-      return subtitles.find((subtitle) => {
-        const mappedLang = isoCodeMapping[subtitle.lang] || subtitle.lang;
-        
-        return mappedLang === langCode;
-      });
-    };
-
-    // 1. Prioritize newisocode (targetLanguage)
-    const targetLangSubtitle = findSubtitle(newisocode);
-    
-    if (targetLangSubtitle !== undefined && targetLangSubtitle !== null) {
-      return [{ url: targetLangSubtitle.url, lang: targetLangSubtitle.lang }];
-    }
-
-    // 2. If targetLanguage subtitle not found, try to find an English subtitle
-    const englishSubtitle = findSubtitle('en');
-    if (englishSubtitle) {
-      
-      return [{ url: englishSubtitle.url, lang: englishSubtitle.lang }];
-    }
-
-    // 3. If no English subtitle found, return the first available subtitle of any language
-    const firstAvailableSubtitle = subtitles[0];
-
-    return [{ url: firstAvailableSubtitle.url, lang: firstAvailableSubtitle.lang }];
-
-  } catch (error) {
-    console.error("Subtitle URL error:", error);
-    throw error;
-  }
+  const chosen = ranked.slice(0, MAX_CANDIDATES);
+  console.log(
+    `[subtitles] ${chosen.length} ban du phong theo thu tu: ` +
+      chosen.map((s) => `${s.lang}/${s.source}`).join(", ")
+  );
+  return chosen.map((s) => ({ url: s.url, lang: s.lang, source: s.source }));
 };
 
 module.exports = { getsubtitles, downloadSubtitles };
