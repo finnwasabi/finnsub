@@ -1,5 +1,9 @@
 const googleTranslate = require("google-translate-api-browser");
 const fs = require("fs").promises;
+// Ban dong bo, chi dung cho file dem han muc: doc va ghi phai lien nhau khong co await
+// o giua thi so dem moi khong bi hai luot goi dam nhau.
+const fsSync = require("fs");
+const path = require("path");
 const OpenAI = require("openai");
 require("dotenv").config();
 
@@ -71,6 +75,53 @@ function buildKeys(apikey) {
  * khi khoa thu nhat can, va nua so han muc bi bo phi.
  */
 const slotOf = (keyIndex, model) => `${keyIndex}|${model}`;
+
+/**
+ * Dem so luot goi da tieu, de con biet hom nay con bao nhieu ma khong phai doi den luc
+ * no het roi phu de ngung ra.
+ *
+ * Moc ngay phai theo gio Thai Binh Duong chu khong theo gio Viet Nam: han muc mien phi
+ * cua Google reset luc nua dem ben do, tuc 14:00 gio Viet Nam. Dem theo ngay duong lich
+ * o day se lech mot doan moi ngay va bao sai vao dung khung gio user hay xem phim.
+ */
+const USAGE_FILE = process.env.QUOTA_USAGE_FILE || "data/quota-usage.json";
+const USAGE_KEEP_DAYS = Number(process.env.QUOTA_USAGE_KEEP_DAYS || 14);
+
+const quotaDay = (at = new Date()) =>
+  at.toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+
+let usage = null;
+
+function loadUsage() {
+  if (usage) return usage;
+  try {
+    usage = JSON.parse(fsSync.readFileSync(USAGE_FILE, "utf8"));
+  } catch {
+    usage = {};
+  }
+  return usage;
+}
+
+// Ghi dong bo co chu dich: Node chay mot luong, doc va ghi lien nhau khong co await o
+// giua nen khong the co hai luot goi dam nhau lam mat so dem.
+function recordCall(keyIndex, model) {
+  try {
+    const data = loadUsage();
+    const day = quotaDay();
+    data[day] = data[day] || {};
+    const slot = slotOf(keyIndex, model);
+    data[day][slot] = (data[day][slot] || 0) + 1;
+
+    const keep = Object.keys(data).sort().slice(-USAGE_KEEP_DAYS);
+    for (const d of Object.keys(data)) if (!keep.includes(d)) delete data[d];
+
+    fsSync.mkdirSync(path.dirname(USAGE_FILE), { recursive: true });
+    fsSync.writeFileSync(USAGE_FILE, JSON.stringify(data));
+  } catch (error) {
+    // Dem hong thi ke, khong duoc phep lam vo mot luot dich that.
+    console.warn(`[quota] khong ghi duoc so dem: ${error.message}`);
+  }
+}
 // Chi bao so thu tu khoa ra log, tuyet doi khong bao gio bao gia tri khoa.
 const keyLabel = (i) => `khoa #${i + 1}`;
 
@@ -173,7 +224,14 @@ function buildPrompt(texts, targetLanguage) {
   )}\n`;
 }
 
-async function callOpenAiCompatible(texts, targetLanguage, apikey, base_url, model) {
+async function callOpenAiCompatible(
+  texts,
+  targetLanguage,
+  apikey,
+  base_url,
+  model,
+  keyIndex = 0
+) {
   const openai = new OpenAI({
     apiKey: apikey,
     baseURL: base_url,
@@ -192,6 +250,7 @@ async function callOpenAiCompatible(texts, targetLanguage, apikey, base_url, mod
   // Mot dong cho moi luot goi thanh cong, co ten model. Dem dong nay trong log la biet
   // chinh xac han muc ngay cua tung model, thay vi phai tin vao tai lieu cua nha cung cap.
   console.log(`Translated ${texts.length} lines with ${model}`);
+  recordCall(keyIndex, model);
   return (translatedJson.texts || [])
     .slice()
     .sort((a, b) => a.index - b.index)
@@ -262,7 +321,8 @@ async function translateTextWithRetry(
           targetLanguage,
           activeKey,
           base_url,
-          model
+          model,
+          activeKeyIndex
         );
         break;
       }
