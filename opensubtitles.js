@@ -85,6 +85,28 @@ const looksLikeRealSubtitle = (buffer) => {
   return cues >= MIN_CUES;
 };
 
+/**
+ * Ban da co san dung ngon ngu dich duoc tra thang cho nguoi xem, khong di qua buoc tai
+ * ve nen khong duoc loc boi looksLikeRealSubtitle. Ham nay bit dung cho do: hoi thu mot
+ * doan dau file. Doc 8 KB la du, phu de that co hang chuc khoi trong ngan ay, con file
+ * bao loi cua nha cung cap chi co dung mot khoi.
+ */
+const isServableSubtitle = async (url) => {
+  try {
+    const response = await axios.get(url, {
+      responseType: "arraybuffer",
+      timeout: SOURCE_TIMEOUT_MS,
+      headers: { Range: "bytes=0-8191" },
+      // May chu tra 206 khi chap nhan Range, 200 khi khong. Ca hai deu dung duoc.
+      validateStatus: (status) => status === 200 || status === 206,
+    });
+    return looksLikeRealSubtitle(response.data);
+  } catch (error) {
+    console.warn(`[subtitles] khong hoi duoc ban co san: ${scrub(error.message)}`);
+    return false;
+  }
+};
+
 const downloadSubtitles = async (
   subtitles,
   imdbid,
@@ -188,4 +210,4 @@ const getsubtitles = async (
   return chosen.map((s) => ({ url: s.url, lang: s.lang, source: s.source }));
 };
 
-module.exports = { getsubtitles, downloadSubtitles };
+module.exports = { getsubtitles, downloadSubtitles, isServableSubtitle };

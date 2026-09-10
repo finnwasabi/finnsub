@@ -74,16 +74,23 @@ const slotOf = (keyIndex, model) => `${keyIndex}|${model}`;
 // Chi bao so thu tu khoa ra log, tuyet doi khong bao gio bao gia tri khoa.
 const keyLabel = (i) => `khoa #${i + 1}`;
 
-// Tim cap (khoa, model) ke tiep con dung duoc. Di het moi cap roi moi chiu thua.
+/**
+ * Tim cap (khoa, model) ke tiep con dung duoc. Di het moi cap roi moi chiu thua.
+ *
+ * Doi khoa truoc, ha model sau. Danh sach model xep theo chat luong giam dan, nen
+ * vat can khoa 1 xuong toi model te nhat roi moi dung toi model tot nhat cua khoa 2
+ * la tu lam ban dich xau di trong khi han muc ngon van con. Thu tu dung phai la
+ * K1/3.7, K2/3.7, K1/3.6, K2/3.6, K1/3.5, K2/3.5.
+ */
 function nextSlot(keys, models, keyIndex, modelIndex) {
   const total = keys.length * models.length;
   let k = keyIndex;
   let m = modelIndex;
   for (let step = 0; step < total; step++) {
-    m += 1;
-    if (m >= models.length) {
-      m = 0;
-      k = (k + 1) % keys.length;
+    k += 1;
+    if (k >= keys.length) {
+      k = 0;
+      m = (m + 1) % models.length;
     }
     if (!isExhausted(slotOf(k, models[m]))) return { keyIndex: k, modelIndex: m };
   }

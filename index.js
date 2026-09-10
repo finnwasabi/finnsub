@@ -226,28 +226,74 @@ builder.defineSubtitlesHandler(async function (args) {
       });
     }
 
-    const foundSubtitle = subs[0];
+    const langOf = (sub) => isoCodeMapping[sub.lang] || sub.lang;
 
-    const mappedFoundSubtitleLang = isoCodeMapping[foundSubtitle.lang] || foundSubtitle.lang;
+    // Ban da co san dung ngon ngu dich thi tra thang cho nguoi xem, khoi ton luot dich.
+    // Nhung phai hoi thu URL truoc: nha cung cap co the liet ke mot ban roi tra ve kho
+    // nen rong, ma ban ghi nay se nam lai trong co so du lieu vinh vien neu khong kiem.
+    // Da gap that voi SubDL ngay 10/09/2026, ho tra HTTP 500 kem mot file trong giong
+    // .srt nhung chi co dung mot khoi thoi gian.
+    const readyMade = subs.filter((sub) => langOf(sub) === targetLanguage);
+    let usableReadyMade = null;
+    for (const candidate of readyMade) {
+      if (await opensubtitles.isServableSubtitle(candidate.url)) {
+        usableReadyMade = candidate;
+        break;
+      }
+      console.warn(
+        `Ready made ${candidate.lang} subtitle from ${candidate.source} is broken, skipping it`
+      );
+    }
 
-    if (mappedFoundSubtitleLang === targetLanguage) {
+    if (usableReadyMade) {
       console.log(
-        "Desired language subtitle found on OpenSubtitles, returning it directly."
+        "Desired language subtitle found and it serves a real file, returning it directly."
       );
       await connection.addsubtitle(
         imdbid,
         type,
         season,
         episode,
-        foundSubtitle.url.replace(`${process.env.BASE_URL}/`, ""),
+        usableReadyMade.url.replace(`${process.env.BASE_URL}/`, ""),
         targetLanguage
       );
       return Promise.resolve({
         subtitles: [
           {
             id: `${imdbid}-subtitle`,
-            url: foundSubtitle.url,
-            lang: foundSubtitle.lang,
+            url: usableReadyMade.url,
+            lang: usableReadyMade.lang,
+          },
+        ],
+      });
+    }
+
+    // Con lai la nhung ban can dich. Bo han cac ban dung ngon ngu dich vua thu hong,
+    // gui chung sang buoc dich chi ton luot goi ma van ra file rong.
+    const translatable = subs.filter((sub) => langOf(sub) !== targetLanguage);
+
+    if (translatable.length === 0) {
+      console.log("Every ready made subtitle is broken and there is nothing to translate.");
+      await createOrUpdateMessageSub(
+        "No subtitles found on OpenSubtitles",
+        imdbid,
+        season,
+        episode,
+        targetLanguage,
+        config.provider
+      );
+      return Promise.resolve({
+        subtitles: [
+          {
+            id: `${imdbid}-subtitle`,
+            url: generateSubtitleUrl(
+              targetLanguage,
+              imdbid,
+              season,
+              episode,
+              config.provider
+            ),
+            lang: toIso639_2(targetLanguage),
           },
         ],
       });
@@ -271,7 +317,7 @@ builder.defineSubtitlesHandler(async function (args) {
       // Dua ca danh sach du phong chu khong chi ban dau. Nha cung cap co the liet ke
       // mot ban roi tra ve kho nen rong luc tai that, luc do ben tai se chuyen sang ban
       // ke tiep thay vi bo cuoc. Da gap that voi SubDL ngay 10/09/2026.
-      subs: subs,
+      subs: translatable,
       imdbid: imdbid,
       season: season,
       episode: episode,
