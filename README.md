@@ -1,4 +1,4 @@
-# Subtitle Translate
+# AI Subtitles
 
 A Stremio addon that fetches English subtitles from OpenSubtitles and translates them into the
 language you pick, using Google Translate or any OpenAI compatible model. Timing, line breaks and

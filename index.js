@@ -58,8 +58,8 @@ async function isUsableSubtitle(relativePath) {
 
 const builder = new addonBuilder({
   id: "com.finnwasabi.subtitletranslate",
-  version: "1.0.2",
-  name: "Subtitle Translate",
+  version: "1.0.3",
+  name: "AI Subtitles",
   logo: `${process.env.BASE_URL || ""}/assets/logo.png`,
   behaviorHints: {
     configurable: true,

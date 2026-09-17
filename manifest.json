@@ -1,7 +1,7 @@
 {
   "id": "com.finnwasabi.subtitletranslate",
   "version": "1.0.2",
-  "name": "Subtitle Translate",
+  "name": "AI Subtitles",
   "logo": "/assets/logo.png",
   "configurable": true,
   "behaviorHints": {
