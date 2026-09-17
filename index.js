@@ -56,9 +56,22 @@ async function isUsableSubtitle(relativePath) {
   }
 }
 
+// Ban nguoi dich san den tu chinh OpenSubtitles, SubDL, SubSource, ma AIOStreams cung liet ke
+// y nhu vay, nen tra lai o day chi sinh them mot dong trung trong trinh phat. Mac dinh addon
+// im lang va chi hien khi that su dich. Ai dung addon ma khong co AIOStreams thi dat
+// RETURN_READY_MADE=true de nhan lai ban co san.
+function isReadyMadeRecord(record) {
+  return String(record || "").startsWith("http");
+}
+
+function readyMadeResponse(url, lang) {
+  if (process.env.RETURN_READY_MADE !== "true") return { subtitles: [] };
+  return { subtitles: [{ id: "ready-made-subtitle", url, lang }] };
+}
+
 const builder = new addonBuilder({
   id: "com.finnwasabi.subtitletranslate",
-  version: "1.0.3",
+  version: "1.0.4",
   name: "AI Subtitles",
   logo: `${process.env.BASE_URL || ""}/assets/logo.png`,
   behaviorHints: {
@@ -163,6 +176,16 @@ async function handleSubtitles(args) {
       existingSubtitle.length = 0;
     }
 
+    // Ban ghi tro ra URL ngoai nghia la lan truoc da gap ban nguoi dich san, khong co file
+    // dich nao tren dia. Truoc 17/09/2026 nhanh duoi van tra duong dan file dich, nen nguoi
+    // xem mo lai tap do nhan file giu cho "Translating subtitles" con sot hoac mot link 404.
+    if (existingSubtitle.length > 0 && isReadyMadeRecord(existingSubtitle[0])) {
+      console.log("Ready made subtitle already known for this title:", id);
+      return Promise.resolve(
+        readyMadeResponse(existingSubtitle[0], toIso639_2(targetLanguage))
+      );;
+    }
+
     if (existingSubtitle.length > 0) {
       console.log(
         "Subtitle found in database:",
@@ -247,7 +270,7 @@ async function handleSubtitles(args) {
 
     if (usableReadyMade) {
       console.log(
-        "Desired language subtitle found and it serves a real file, returning it directly."
+        "Desired language subtitle found and it serves a real file, no translation needed."
       );
       await connection.addsubtitle(
         imdbid,
@@ -257,15 +280,7 @@ async function handleSubtitles(args) {
         usableReadyMade.url.replace(`${process.env.BASE_URL}/`, ""),
         targetLanguage
       );
-      return Promise.resolve({
-        subtitles: [
-          {
-            id: `${imdbid}-subtitle`,
-            url: usableReadyMade.url,
-            lang: usableReadyMade.lang,
-          },
-        ],
-      });
+      return Promise.resolve(readyMadeResponse(usableReadyMade.url, usableReadyMade.lang));
     }
 
     // Con lai la nhung ban can dich. Bo han cac ban dung ngon ngu dich vua thu hong,
