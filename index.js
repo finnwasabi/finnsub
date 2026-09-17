@@ -107,7 +107,7 @@ function safeConfig(config = {}) {
   return masked;
 }
 
-builder.defineSubtitlesHandler(async function (args) {
+async function handleSubtitles(args) {
   console.log("Subtitle request received:", {
     id: args.id,
     config: safeConfig(args.config),
@@ -358,6 +358,42 @@ builder.defineSubtitlesHandler(async function (args) {
     console.error("Error processing subtitles:", error);
     return Promise.resolve({ subtitles: [] });
   }
+}
+
+// Dich san tap ke tiep (17/09/2026). Xem tap N cua phim bo thi tap N+1 duoc xu ly
+// ngam theo dung chu trinh tren: co ban tieng Viet san thi ghi nhan, khong co moi xep
+// hang dich. Nho vay xem xong tap nay sang tap sau la phu de da nam san, khoi gap dong
+// "Translating subtitles, please wait". Moi ma tap chi lam mot lan trong mot gio, vi
+// trinh phat hay hoi phu de nhieu lan cho cung mot tap. Cho 5 giay de viec cua tap
+// dang xem vao hang doi truoc. Tat bang PREWARM_NEXT_EPISODE=false.
+const PREWARM_DELAY_MS = 5000;
+const PREWARM_DEDUPE_MS = 60 * 60 * 1000;
+const prewarmSeen = new Map();
+
+function schedulePrewarm(args) {
+  if (process.env.PREWARM_NEXT_EPISODE === "false") return;
+  const match = String(args?.id || "").match(/^(tt\d+):(\d+):(\d+)$/);
+  if (!match) return; // phim le khong co tap ke tiep
+  const nextId = `${match[1]}:${match[2]}:${Number(match[3]) + 1}`;
+  const key = `${nextId}|${args.config?.translateto}|${args.config?.provider}`;
+  const now = Date.now();
+  for (const [seenKey, at] of prewarmSeen) {
+    if (now - at > PREWARM_DEDUPE_MS) prewarmSeen.delete(seenKey);
+  }
+  if (prewarmSeen.has(key)) return;
+  prewarmSeen.set(key, now);
+  setTimeout(() => {
+    console.log("Prewarming next episode subtitle:", nextId);
+    handleSubtitles({ ...args, id: nextId }).catch((error) =>
+      console.warn("Prewarm next episode failed:", error.message)
+    );
+  }, PREWARM_DELAY_MS);
+}
+
+builder.defineSubtitlesHandler(function (args) {
+  const response = handleSubtitles(args);
+  schedulePrewarm(args);
+  return response;
 });
 
 function parseId(id) {
