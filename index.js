@@ -23,6 +23,32 @@ function generateSubtitleUrl(
   return `${baseUrl}/subtitles/${provider}/${targetLanguage}/${imdbid}/season${season}/${imdbid}-translated-${episode}-1.srt`;
 }
 
+// Them 29/09/2026: ban dich rieng cho tung release cua cung mot tap hay phim, dat canh file chinh
+// voi ten <imdb>-translated-<tap>-1.<Nhan>.srt. Vi du Our Secret Diary: ban Netflix cham hon ban
+// U-NEXT 4,9 giay suot phim, mot file khong khop duoc ca hai. Nhan hien trong danh sach phu de.
+async function releaseVariants(targetLanguage, imdbid, season, episode, provider) {
+  const main = `${imdbid}-translated-${episode}-1.srt`;
+  const prefix = `${imdbid}-translated-${episode}-1.`;
+  let names = [];
+  try {
+    names = await fsp.readdir(`subtitles/${provider}/${targetLanguage}/${imdbid}/season${season}`);
+  } catch {
+    return [];
+  }
+  const base = generateSubtitleUrl(targetLanguage, imdbid, season, episode, provider).slice(0, -main.length);
+  return names
+    .filter((n) => n !== main && n.startsWith(prefix) && n.endsWith(".srt"))
+    .map((n) => {
+      const tag = n.slice(prefix.length, -4);
+      return {
+        id: `${imdbid}-subtitle-${tag}`,
+        url: base + encodeURIComponent(n),
+        lang: toIso639_2(targetLanguage),
+        label: `AI Subtitles (${tag})`,
+      };
+    });
+}
+
 // Nuvio va Stremio doc ma ngon ngu theo ISO 639-2 (ba chu). Ban goc tra ve
 // "vi-translated", khong khop bang ma nao nen may phat hien "Khong xac dinh".
 // Bang langs/iso_code_mapping.json cua chinh addon anh xa ba chu sang hai chu,
@@ -197,21 +223,26 @@ async function handleSubtitles(args) {
           config.provider
         )
       );
-      return Promise.resolve({
-        subtitles: [
-          {
-            id: `${imdbid}-subtitle`,
-            url: generateSubtitleUrl(
-              targetLanguage,
-              imdbid,
-              season,
-              episode,
-              config.provider
-            ),
-            lang: toIso639_2(targetLanguage),
-          },
-        ],
-      });
+      const mainEntry = {
+        id: `${imdbid}-subtitle`,
+        url: generateSubtitleUrl(
+          targetLanguage,
+          imdbid,
+          season,
+          episode,
+          config.provider
+        ),
+        lang: toIso639_2(targetLanguage),
+      };
+      const variants = await releaseVariants(
+        targetLanguage,
+        imdbid,
+        season,
+        episode,
+        config.provider
+      );
+      if (variants.length) mainEntry.label = "AI Subtitles";
+      return Promise.resolve({ subtitles: [mainEntry, ...variants] });
     }
 
     // 2. If not found, search OpenSubtitles
