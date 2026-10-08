@@ -14,7 +14,13 @@ const { createOrUpdateMessageSub } = require("./subtitles");
  * khoi goc, nen lech mot cai la toan bo phan sau lech thoai ma khong bao loi gi.
  */
 function parseSrt(content) {
-  const normalized = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  // Bo BOM o dau file va coi dong chi co dau cach la dong trong: "\n \n" khong khop
+  // /\n{2,}/ nen hai khoi bi dinh lam mot, khoi sau mat han va moi cau sau do lech mot.
+  const normalized = content
+    .replace(/^\uFEFF/, "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/^[ \t]+$/gm, "");
   const blocks = [];
 
   for (const raw of normalized.split(/\n{2,}/)) {
@@ -31,6 +37,20 @@ function parseSrt(content) {
   }
 
   return blocks;
+}
+
+/**
+ * Ghi lai noi dung .srt tu cac mang song song. Thieu ban dich cho khoi nao thi giu cau
+ * goc cua khoi do, chu khong de "undefined" roi vao file phu de va khong day cau sau
+ * len thay cho no.
+ */
+function formatSrt(counters, timecodes, lines, originals = []) {
+  const output = [];
+  for (let i = 0; i < counters.length; i++) {
+    const line = lines[i] !== undefined ? lines[i] : originals[i];
+    output.push(counters[i], timecodes[i], line, "");
+  }
+  return output.join("\n");
 }
 
 class SubtitleProcessor {
@@ -206,17 +226,12 @@ class SubtitleProcessor {
           ? `${dirPath}/${imdbid}-translated-${episode}-1.srt`
           : `${dirPath}/${imdbid}-translated-1.srt`;
 
-      // Build subtitle content
-      const output = [];
-      for (let i = 0; i < this.subcounts.length; i++) {
-        // Neu vi ly do nao do thieu ban dich cho mot khoi thi giu nguyen cau goc, chu
-        // khong de "undefined" roi vao file phu de.
-        const line =
-          this.translatedSubtitle[i] !== undefined
-            ? this.translatedSubtitle[i]
-            : this.texts[i];
-        output.push(this.subcounts[i], this.timecodes[i], line, "");
-      }
+      const content = formatSrt(
+        this.subcounts,
+        this.timecodes,
+        this.translatedSubtitle,
+        this.texts
+      );
 
       if (
         this.untranslatedCount > 0 &&
@@ -234,7 +249,7 @@ class SubtitleProcessor {
       }
 
       // Save file and update database
-      await fs.writeFile(newSubtitleFilePath, output.join("\n"), { flag: "w" });
+      await fs.writeFile(newSubtitleFilePath, content, { flag: "w" });
 
       if (!(await connection.checkseries(imdbid))) {
         await connection.addseries(imdbid, type);
@@ -365,4 +380,4 @@ async function startTranslation(
   }
 }
 
-module.exports = { startTranslation, parseSrt };
+module.exports = { startTranslation, parseSrt, formatSrt };

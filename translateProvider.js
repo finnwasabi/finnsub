@@ -755,4 +755,8 @@ module.exports = {
   salvageItems,
   toLines,
   translationSchema,
+  nextSlot,
+  pickSlot,
+  markExhausted,
+  slotOf,
 };
