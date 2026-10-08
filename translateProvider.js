@@ -412,11 +412,12 @@ function translationSchema(count) {
   };
 }
 
+// Gemini qua duong OpenAI-compatible hay tra loi khong co body ("400 status code (no
+// body)"), nen khong doc duoc ly do. Luot nay da gui kem schema, 400/422 thi coi nhu
+// schema bi tu choi: lui ve json_object chi ton them mot luot, con doan sai thi ca lo hong.
 function isSchemaUnsupported(error) {
   const status = error?.status || error?.response?.status;
-  if (status !== 400 && status !== 422) return false;
-  const text = String(error?.message || "").toLowerCase();
-  return /response_format|json_schema|schema/.test(text);
+  return status === 400 || status === 422;
 }
 
 async function callOpenAiCompatible(

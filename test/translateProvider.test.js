@@ -93,7 +93,8 @@ test("only re-requests the lines the model dropped", async () => {
 test("falls back to json_object when the provider rejects a schema", async () => {
   const { server, calls, url } = await mockServer((request) => {
     if (request.response_format.type === "json_schema") {
-      return { status: 400, content: "response_format json_schema is not supported" };
+      // Gemini often answers without a reason, so the status alone must trigger the fallback.
+      return { status: 400, content: "" };
     }
     const texts = inputOf(request);
     return {
