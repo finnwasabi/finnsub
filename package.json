@@ -23,7 +23,6 @@
     "better-queue": "^3.8.12",
     "dotenv": "^16.3.1",
     "google-translate-api-browser": "^5.0.0",
-    "mysql2": "^3.11.4",
     "openai": "^4.73.1",
     "sqlite3": "^5.1.6",
     "stremio-addon-sdk": "^1.6.10",
