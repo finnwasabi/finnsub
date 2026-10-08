@@ -173,38 +173,125 @@ function isQuotaError(error) {
 }
 
 /**
- * Model nho hay tra ve JSON gan dung: boc trong dau ``` , thua dau phay cuoi mang, hoac
- * chen ky tu xuong dong tho vao giua chuoi. Thu vien JSON.parse tu choi het. Ham nay don
- * lai theo tung buoc, tu it can thiep den nhieu, va dung ngay khi phan tich duoc.
+ * Sua chuoi JSON gan dung trong mot luot quet, giu nguyen phan da dung:
+ * - thoat xuong dong, tab tho nam trong chuoi;
+ * - thoat dau nhay kep nam GIUA cau thoai (`"He said "no""`), loi hay gap nhat voi phu de
+ *   vi cau thoai rat hay co trich dan. Dau nhay chi duoc coi la dong chuoi khi sau no
+ *   (bo qua khoang trang) la `:` `}` `]`, het chuoi, hoac `,` roi toi mot gia tri JSON moi.
+ */
+function repairJsonText(text) {
+  let out = "";
+  let inString = false;
+  let escaping = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (!inString) {
+      if (ch === '"') inString = true;
+      out += ch;
+      continue;
+    }
+    if (escaping) {
+      escaping = false;
+      out += ch;
+      continue;
+    }
+    if (ch === "\\") {
+      escaping = true;
+      out += ch;
+      continue;
+    }
+    if (ch === "\n") {
+      out += "\\n";
+      continue;
+    }
+    if (ch === "\r") {
+      out += "\\r";
+      continue;
+    }
+    if (ch === "\t") {
+      out += "\\t";
+      continue;
+    }
+    if (ch === '"') {
+      if (closesString(text, i + 1)) {
+        inString = false;
+        out += ch;
+      } else {
+        out += '\\"';
+      }
+      continue;
+    }
+    out += ch;
+  }
+  return out;
+}
+
+function closesString(text, from) {
+  let j = from;
+  while (j < text.length && /\s/.test(text[j])) j++;
+  if (j >= text.length) return true;
+  const next = text[j];
+  if (next === ":" || next === "}" || next === "]") return true;
+  if (next !== ",") return false;
+  j++;
+  while (j < text.length && /\s/.test(text[j])) j++;
+  return j >= text.length || /["{\[\d\-tfn]/.test(text[j]);
+}
+
+/**
+ * Cat ra doi tuong JSON can bang dau tien, bo qua dau ngoac nam trong chuoi.
+ */
+function firstBalancedJson(text) {
+  const start = text.search(/[{[]/);
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (ch === "\\") i++;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === "{" || ch === "[") depth++;
+    else if (ch === "}" || ch === "]") {
+      depth--;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
+/**
+ * Model nho hay tra ve JSON gan dung: boc trong dau ``` , thua dau phay cuoi mang, chen
+ * xuong dong tho hoac dau nhay kep chua thoat vao giua chuoi. JSON.parse tu choi het. Ham
+ * nay don lai theo tung buoc, tu it can thiep den nhieu, va dung ngay khi phan tich duoc.
  */
 function parseJsonLoose(raw) {
   const attempts = [];
   const text = String(raw || "").trim();
   attempts.push(text);
 
-  const fenced = text.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
+  // Code fence co the nam giua cau "Here is the JSON:" va loi chao cuoi, khong chi o dau.
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const fenced = fence ? fence[1].trim() : text;
   if (fenced !== text) attempts.push(fenced);
+
+  // "Unexpected non-whitespace character after JSON": model in xong mot doi tuong roi in
+  // them chu hoac doi tuong thu hai. Cat tu { dau den } cuoi la dinh ca hai, nen thu
+  // doi tuong can bang dau tien truoc.
+  const balanced = firstBalancedJson(fenced);
+  if (balanced && balanced !== fenced) attempts.push(balanced);
 
   const start = fenced.indexOf("{");
   const end = fenced.lastIndexOf("}");
   const sliced = start !== -1 && end > start ? fenced.slice(start, end + 1) : fenced;
   if (sliced !== fenced) attempts.push(sliced);
 
-  // Xuong dong tho nam trong chuoi la loi hay gap nhat: thoat chung roi thu lai.
-  let escaped = "";
-  let inString = false;
-  let prevChar = "";
-  for (const ch of sliced) {
-    if (ch === '"' && prevChar !== "\\") inString = !inString;
-    if (inString && (ch === "\n" || ch === "\r")) {
-      escaped += ch === "\n" ? "\\n" : "\\r";
-    } else {
-      escaped += ch;
-    }
-    prevChar = ch === "\\" && prevChar === "\\" ? "" : ch;
-  }
-  attempts.push(escaped);
-  attempts.push(escaped.replace(/,\s*([}\]])/g, "$1")); // bo dau phay thua
+  const repaired = repairJsonText(sliced);
+  attempts.push(repaired);
+  attempts.push(repaired.replace(/,\s*([}\]])/g, "$1")); // bo dau phay thua
 
   let lastError = null;
   for (const candidate of attempts) {
@@ -217,11 +304,119 @@ function parseJsonLoose(raw) {
   throw lastError;
 }
 
+/**
+ * Khi ca khoi JSON khong cuu duoc (thuong la bi cat ngang vi het token dau ra), van nhat
+ * lay tung cap {index, text} con nguyen ven. Giu duoc 180/200 dong thi chi phai hoi lai
+ * 20 dong, thay vi dot them mot luot goi cho ca lo.
+ */
+function salvageItems(raw) {
+  const text = repairJsonText(String(raw || ""));
+  const items = new Map();
+  const duplicated = new Set();
+  const str = '"((?:[^"\\\\]|\\\\.)*)"';
+  const patterns = [
+    new RegExp(`\\{\\s*"index"\\s*:\\s*(\\d+)\\s*,\\s*"text"\\s*:\\s*${str}\\s*\\}`, "g"),
+    new RegExp(`\\{\\s*"text"\\s*:\\s*${str}\\s*,\\s*"index"\\s*:\\s*(\\d+)\\s*\\}`, "g"),
+  ];
+  patterns.forEach((pattern, order) => {
+    for (const match of text.matchAll(pattern)) {
+      const index = Number(order === 0 ? match[1] : match[2]);
+      const body = order === 0 ? match[2] : match[1];
+      try {
+        const value = JSON.parse(`"${body}"`);
+        // Trung index thi khong biet ban nao dung: bo ca hai, de hoi lai.
+        if (items.has(index)) duplicated.add(index);
+        else items.set(index, value);
+      } catch {
+        // Cap nay hong that su, bo qua de hoi lai.
+      }
+    }
+  });
+  for (const index of duplicated) items.delete(index);
+  return items;
+}
+
+/**
+ * Doi ket qua cua model ra mot mang dung bang so dong gui di, dong nao thieu thi de null.
+ * Xep theo index chu khong theo thu tu tra ve: model bo sot mot dong thi chi dong do trong,
+ * cac dong sau khong bi day lech len.
+ */
+function toLines(parsed, count) {
+  const lines = new Array(count).fill(null);
+  const list = Array.isArray(parsed) ? parsed : parsed?.texts;
+  if (!Array.isArray(list)) return lines;
+
+  // Mang chuoi tran khong co index thi khong biet cau nao cua dong nao: dem du so luong
+  // van co the la gop mot cau roi tach mot cau khac. Bo ca, de hoi lai.
+  const seen = new Set();
+  const duplicated = new Set();
+  for (const item of list) {
+    const index = Number(item?.index);
+    if (!Number.isInteger(index) || index < 0 || index >= count) continue;
+    if (typeof item?.text !== "string") continue;
+    if (seen.has(index)) duplicated.add(index);
+    seen.add(index);
+    lines[index] = item.text;
+  }
+  // Mot index xuat hien hai lan la dau hieu model da truot thu tu: khong biet ban nao
+  // dung, nen bo trong de hoi lai thay vi doan.
+  for (const index of duplicated) lines[index] = null;
+  return lines;
+}
+
 function buildPrompt(texts, targetLanguage) {
   const jsonInput = { texts: texts.map((text, index) => ({ index, text })) };
-  return `You are a professional movie subtitle translator.\nTranslate each subtitle text in the "texts" array of the following JSON object into the specified language "${targetLanguage}".\n\nThe output must be a JSON object with the same structure as the input. The "texts" array should contain the translated texts corresponding to their original indices.\n\n**Strict Requirements:**\n- Strictly preserve line breaks and original formatting for each subtitle.\n- Do not combine or split texts during translation.\n- The number of elements in the output array must exactly match the input array.\n- Escape every line break inside a JSON string as \\n so the output stays valid JSON.\n- Ensure the final JSON is valid and retains the complete structure.\n\nInput:\n${JSON.stringify(
+  return `You are a professional movie subtitle translator.\nTranslate each subtitle text in the "texts" array of the following JSON object into the specified language "${targetLanguage}".\n\nThe output must be a JSON object with the same structure as the input. The "texts" array should contain the translated texts corresponding to their original indices.\n\n**Strict Requirements:**\n- Strictly preserve line breaks and original formatting for each subtitle.\n- Do not combine or split texts during translation.\n- The number of elements in the output array must exactly match the input array, and every element must keep its original "index".\n- Escape every line break inside a JSON string as \\n and every double quote inside a JSON string as \\" so the output stays valid JSON.\n- Ensure the final JSON is valid and retains the complete structure.\n\nInput:\n${JSON.stringify(
     jsonInput
   )}\n`;
+}
+
+/**
+ * Ep model tra ve dung khuon bang response schema thay vi chi "json_object": voi Gemini
+ * day la che do sinh co rang buoc, model khong the viet ra JSON sai cu phap nua. Mot so
+ * nha cung cap OpenAI-compatible chua ho tro json_schema va tra 400, nen nho lai cap
+ * (base_url, model) do va lui ve json_object.
+ */
+const USE_JSON_SCHEMA = process.env.TRANSLATE_JSON_SCHEMA !== "false";
+const noSchemaSupport = new Set();
+
+// Tai lieu structured output cua Gemini liet ke minItems, maxItems, minimum, maximum la
+// tu khoa duoc ho tro, nen khoa luon so dong va khoang index cua tung lo.
+// https://ai.google.dev/gemini-api/docs/openai#structured-output
+// https://ai.google.dev/gemini-api/docs/structured-output
+function translationSchema(count) {
+  return {
+    type: "json_schema",
+    json_schema: {
+      name: "subtitle_translation",
+      schema: {
+        type: "object",
+        properties: {
+          texts: {
+            type: "array",
+            minItems: count,
+            maxItems: count,
+            items: {
+              type: "object",
+              properties: {
+                index: { type: "integer", minimum: 0, maximum: Math.max(count - 1, 0) },
+                text: { type: "string" },
+              },
+              required: ["index", "text"],
+            },
+          },
+        },
+        required: ["texts"],
+      },
+    },
+  };
+}
+
+function isSchemaUnsupported(error) {
+  const status = error?.status || error?.response?.status;
+  if (status !== 400 && status !== 422) return false;
+  const text = String(error?.message || "").toLowerCase();
+  return /response_format|json_schema|schema/.test(text);
 }
 
 async function callOpenAiCompatible(
@@ -239,22 +434,70 @@ async function callOpenAiCompatible(
     maxRetries: 0, // thu lai o tang tren, de con phan biet loi het han muc
   });
 
-  const completion = await openai.chat.completions.create({
+  const request = {
     messages: [{ role: "user", content: buildPrompt(texts, targetLanguage) }],
     model,
-    response_format: { type: "json_object" },
     temperature: 0.3,
-  });
+  };
+  const schemaKey = `${base_url}|${model}`;
+  let completion;
+  if (USE_JSON_SCHEMA && !noSchemaSupport.has(schemaKey)) {
+    try {
+      completion = await openai.chat.completions.create({
+        ...request,
+        response_format: translationSchema(texts.length),
+      });
+    } catch (error) {
+      if (!isSchemaUnsupported(error)) throw error;
+      noSchemaSupport.add(schemaKey);
+      console.log(`${model} rejected response schema, falling back to json_object`);
+    }
+  }
+  if (!completion) {
+    completion = await openai.chat.completions.create({
+      ...request,
+      response_format: { type: "json_object" },
+    });
+  }
+  // Luot goi da tinh vao han muc ke ca khi JSON hong, nen dem truoc khi phan tich.
+  recordCall(keyIndex, model);
 
-  const translatedJson = parseJsonLoose(completion.choices[0].message.content);
+  const choice = completion.choices[0];
+  const content = choice?.message?.content;
+  if (choice?.finish_reason === "length") {
+    console.log(`${model} hit the output token limit on ${texts.length} lines`);
+  }
+
+  let lines;
+  try {
+    lines = toLines(parseJsonLoose(content), texts.length);
+  } catch {
+    const salvaged = salvageItems(content);
+    lines = new Array(texts.length).fill(null);
+    for (const [index, text] of salvaged) {
+      if (index < texts.length) lines[index] = text;
+    }
+  }
+
+  const kept = lines.filter((line) => line !== null).length;
+  if (kept === 0) {
+    throw new Error(`Malformed JSON from ${model}, no line could be recovered`);
+  }
   // Mot dong cho moi luot goi thanh cong, co ten model. Dem dong nay trong log la biet
   // chinh xac han muc ngay cua tung model, thay vi phai tin vao tai lieu cua nha cung cap.
-  console.log(`Translated ${texts.length} lines with ${model}`);
-  recordCall(keyIndex, model);
-  return (translatedJson.texts || [])
-    .slice()
-    .sort((a, b) => a.index - b.index)
-    .map((item) => item.text);
+  console.log(`Translated ${kept}/${texts.length} lines with ${model}`);
+  return lines;
+}
+
+/**
+ * Loi da qua mot tang thu lai ben trong thi tang ngoai khong duoc thu lai lan nua: neu
+ * khong mot lo hong se an MAX_RETRIES^2 luot goi thay vi MAX_RETRIES.
+ */
+function nested(promise) {
+  return promise.catch((error) => {
+    error.alreadyRetried = true;
+    throw error;
+  });
 }
 
 async function translateTextWithRetry(
@@ -324,6 +567,38 @@ async function translateTextWithRetry(
           model,
           activeKeyIndex
         );
+
+        // Model tra ve thieu dong hoac JSON vo mot phan: chi hoi lai nhung dong con thieu.
+        const missing = [];
+        resultArray.forEach((line, i) => line === null && missing.push(i));
+        if (missing.length > 0) {
+          if (attempt >= maxRetries) {
+            throw new Error(
+              `Max retries (${maxRetries}) reached. ${missing.length} lines still missing.`
+            );
+          }
+          console.log(
+            `Attempt ${attempt}/${maxRetries} on ${model} kept ${
+              texts.length - missing.length
+            }/${texts.length} lines, asking again for the ${missing.length} missing`
+          );
+          const filled = await nested(
+            translateTextWithRetry(
+              missing.map((i) => texts[i]),
+              targetLanguage,
+              provider,
+              apikey,
+              base_url,
+              model_name,
+              attempt + 1,
+              maxRetries,
+              index,
+              waitedForRateLimit,
+              activeKeyIndex
+            )
+          );
+          missing.forEach((lineIndex, j) => (resultArray[lineIndex] = filled[j]));
+        }
         break;
       }
       default:
@@ -352,23 +627,29 @@ async function translateTextWithRetry(
       }
 
       await new Promise((resolve) => setTimeout(resolve, RETRY_BASE_MS * attempt));
-      return translateTextWithRetry(
-        texts,
-        targetLanguage,
-        provider,
-        apikey,
-        base_url,
-        model_name,
-        attempt + 1,
-        maxRetries,
-        index,
-        waitedForRateLimit,
-        activeKeyIndex
+      return await nested(
+        translateTextWithRetry(
+          texts,
+          targetLanguage,
+          provider,
+          apikey,
+          base_url,
+          model_name,
+          attempt + 1,
+          maxRetries,
+          index,
+          waitedForRateLimit,
+          activeKeyIndex
+        )
       );
     }
 
     return Array.isArray(texts) ? resultArray : result.text;
   } catch (error) {
+    // Loi tu mot tang thu lai ben trong (ke ca QuotaError, vi no cung chua chu "quota")
+    // da duoc xu ly xong roi, chi viec chuyen len.
+    if (error.alreadyRetried || error instanceof QuotaError) throw error;
+
     if (isQuotaError(error)) {
       if (!waitedForRateLimit) {
         console.log(
@@ -466,4 +747,12 @@ async function translateText(
   );
 }
 
-module.exports = { translateText, QuotaError, parseJsonLoose };
+module.exports = {
+  translateText,
+  QuotaError,
+  parseJsonLoose,
+  repairJsonText,
+  salvageItems,
+  toLines,
+  translationSchema,
+};

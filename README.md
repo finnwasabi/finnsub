@@ -61,6 +61,7 @@ so give each person their own key rather than sharing a link.
 | `TRANSLATE_BATCH_SIZE` | 200 | subtitle lines per request, 50 for ChatGPT API |
 | `TRANSLATE_BATCH_PAUSE_MS` | 4000 | pause between batches |
 | `TRANSLATE_MAX_RETRIES` | 3 | retries for failures that are not quota related |
+| `TRANSLATE_JSON_SCHEMA` | true | ask for a JSON schema response, falling back to `json_object` when a provider rejects it |
 | `QUOTA_MEMORY_MS` | 3600000 | how long a spent model is skipped |
 | `DEBUG_TRANSLATE` | false | write mismatched batches to `debug/` |
 
