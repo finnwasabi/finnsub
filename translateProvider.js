@@ -755,6 +755,7 @@ module.exports = {
   repairJsonText,
   salvageItems,
   toLines,
+  buildPrompt,
   translationSchema,
   nextSlot,
   pickSlot,
